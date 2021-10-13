@@ -1,3 +1,8 @@
+use structopt::StructOpt;
+use sandu::Sandu;
+
 fn main() {
-    println!("Hello, world!");
+    let sandu = Sandu::from_args();
+
+    sandu::run(sandu);
 }
