@@ -1,12 +1,13 @@
+use std::path::Path;
 use std::process::Command;
 
 use structopt::StructOpt;
-use sandu::{Sandu, Terraform};
+use sandu::{Filesystem, Sandu, Terraform};
 
 fn main() -> Result<(), String> {
     let sandu = Sandu::from_args();
 
-    sandu::run(sandu, &TerraformCli {})
+    sandu::run(sandu, &TerraformCli {}, &LocalFilesystem {})
 }
 
 struct TerraformCli {}
@@ -17,5 +18,12 @@ impl Terraform for TerraformCli {
             .output()
             .expect("Failed to execute terraform show -json with provided plan file");
         Ok(cmd.stdout)
+    }
+}
+
+struct LocalFilesystem {}
+impl Filesystem for LocalFilesystem {
+    fn file_exists(&self, path: &str) -> bool {
+        Path::new(&path).is_file()
     }
 }

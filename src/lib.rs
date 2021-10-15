@@ -7,8 +7,8 @@ pub struct Sandu {
     planfile: String,
 }
 
-pub fn run(sandu: Sandu, terraform: &dyn Terraform) -> Result<(), String> {
-    if !std::path::Path::new(&sandu.planfile).is_file() {
+pub fn run(sandu: Sandu, terraform: &dyn Terraform, filesystem: &dyn Filesystem) -> Result<(), String> {
+    if !filesystem.file_exists(&sandu.planfile) {
         return Err("Provided file does not exist".to_string())
     }
     let json_bytes = terraform.show_plan(&sandu.planfile).expect("Invalid Terraform plan file provided");
@@ -40,4 +40,8 @@ struct Change {
 
 pub trait Terraform {
     fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String>;
+}
+
+pub trait Filesystem {
+    fn file_exists(&self, path: &str) -> bool;
 }
