@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
-use structopt::StructOpt;
 use sandu::{Filesystem, Sandu, Terraform};
+use structopt::StructOpt;
 
 fn main() -> Result<(), String> {
     let sandu = Sandu::from_args();

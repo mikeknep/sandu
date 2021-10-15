@@ -2,16 +2,22 @@ use serde::Deserialize;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
-#[structopt(name="sandu", about="Interactive Terraform state surgery")]
+#[structopt(name = "sandu", about = "Interactive Terraform state surgery")]
 pub struct Sandu {
     planfile: String,
 }
 
-pub fn run(sandu: Sandu, terraform: &dyn Terraform, filesystem: &dyn Filesystem) -> Result<(), String> {
+pub fn run(
+    sandu: Sandu,
+    terraform: &dyn Terraform,
+    filesystem: &dyn Filesystem,
+) -> Result<(), String> {
     if !filesystem.file_exists(&sandu.planfile) {
-        return Err("Provided file does not exist".to_string())
+        return Err("Provided file does not exist".to_string());
     }
-    let json_bytes = terraform.show_plan(&sandu.planfile).expect("Invalid Terraform plan file provided");
+    let json_bytes = terraform
+        .show_plan(&sandu.planfile)
+        .expect("Invalid Terraform plan file provided");
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes).unwrap();
     Ok(())
 }
@@ -60,12 +66,16 @@ mod tests {
 
     struct EmptyFilesystem {}
     impl Filesystem for EmptyFilesystem {
-        fn file_exists(&self, path: &str) -> bool { return false }
+        fn file_exists(&self, path: &str) -> bool {
+            return false;
+        }
     }
 
     #[test]
     fn returns_error_when_planfile_does_not_exist() {
-        let sandu = Sandu{ planfile: "does_not_exist".to_string() };
+        let sandu = Sandu {
+            planfile: "does_not_exist".to_string(),
+        };
 
         let result = run(sandu, &FailingTerraform {}, &EmptyFilesystem {});
         assert_eq!(Err("Provided file does not exist".to_string()), result);
