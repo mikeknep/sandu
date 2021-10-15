@@ -45,3 +45,29 @@ pub trait Terraform {
 pub trait Filesystem {
     fn file_exists(&self, path: &str) -> bool;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    struct FailingTerraform {}
+    impl Terraform for FailingTerraform {
+        fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String> {
+            Err("Terraform failed!".to_string())
+        }
+    }
+
+    struct EmptyFilesystem {}
+    impl Filesystem for EmptyFilesystem {
+        fn file_exists(&self, path: &str) -> bool { return false }
+    }
+
+    #[test]
+    fn returns_error_when_planfile_does_not_exist() {
+        let sandu = Sandu{ planfile: "does_not_exist".to_string() };
+
+        let result = run(sandu, &FailingTerraform {}, &EmptyFilesystem {});
+        assert_eq!(Err("Provided file does not exist".to_string()), result);
+    }
+}
