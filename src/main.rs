@@ -1,13 +1,17 @@
 use std::path::Path;
 use std::process::Command;
 
-use sandu::{Filesystem, Sandu, Terraform};
+use sandu::{Clients, Filesystem, Sandu, Terraform};
 use structopt::StructOpt;
 
 fn main() -> Result<(), String> {
     let sandu = Sandu::from_args();
+    let clients = Clients {
+        filesystem: &LocalFilesystem {},
+        terraform: &TerraformCli {},
+    };
 
-    sandu::run(sandu, &TerraformCli {}, &LocalFilesystem {})
+    sandu::run(sandu, clients)
 }
 
 struct TerraformCli {}

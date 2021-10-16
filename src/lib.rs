@@ -7,15 +7,17 @@ pub struct Sandu {
     planfile: String,
 }
 
-pub fn run(
-    sandu: Sandu,
-    terraform: &dyn Terraform,
-    filesystem: &dyn Filesystem,
-) -> Result<(), String> {
-    if !filesystem.file_exists(&sandu.planfile) {
+pub struct Clients<'a> {
+    pub filesystem: &'a dyn Filesystem,
+    pub terraform: &'a dyn Terraform,
+}
+
+pub fn run(sandu: Sandu, clients: Clients) -> Result<(), String> {
+    if !clients.filesystem.file_exists(&sandu.planfile) {
         return Err("Provided file does not exist".to_string());
     }
-    let json_bytes = terraform
+    let json_bytes = clients
+        .terraform
         .show_plan(&sandu.planfile)
         .expect("Invalid Terraform plan file provided");
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes).unwrap();
@@ -57,15 +59,15 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    struct FailingTerraform {}
-    impl Terraform for FailingTerraform {
+    struct FailClient {}
+
+    impl Terraform for FailClient {
         fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String> {
             Err("Terraform failed!".to_string())
         }
     }
 
-    struct EmptyFilesystem {}
-    impl Filesystem for EmptyFilesystem {
+    impl Filesystem for FailClient {
         fn file_exists(&self, path: &str) -> bool {
             return false;
         }
@@ -76,8 +78,12 @@ mod tests {
         let sandu = Sandu {
             planfile: "does_not_exist".to_string(),
         };
+        let clients = Clients {
+            filesystem: &FailClient {},
+            terraform: &FailClient {},
+        };
 
-        let result = run(sandu, &FailingTerraform {}, &EmptyFilesystem {});
+        let result = run(sandu, clients);
         assert_eq!(Err("Provided file does not exist".to_string()), result);
     }
 }
