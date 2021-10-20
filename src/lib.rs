@@ -3,6 +3,12 @@ use std::error::Error;
 use std::fmt;
 use std::io::{self, Read};
 use structopt::StructOpt;
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use tui::backend::{Backend, TermionBackend};
+use tui::widgets::{Block, Borders};
+use tui::Terminal;
 
 #[derive(StructOpt)]
 #[structopt(name = "sandu", about = "Interactive Terraform state surgery")]
@@ -46,7 +52,49 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     }
     let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes)?;
+
+    let model = Model::init(tfplan);
+
+    let stdout = io::stdout().into_raw_mode()?;
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    let mut asi = termion::async_stdin();
+    terminal.clear()?;
+
+    loop {
+        draw(&mut terminal, &model)?;
+        match get_msg(&mut asi) {
+            Msg::Quit => {
+                terminal.clear()?;
+                return Ok(());
+            }
+            Msg::DoNothing => {}
+        }
+    }
+}
+
+fn draw<B>(terminal: &mut Terminal<B>, model: &Model) -> Result<(), Box<dyn Error>>
+where
+    B: Backend,
+{
+    terminal.draw(|rect| {
+        let size = rect.size();
+        let block = Block::default()
+            .title(format!("{:?}", model.unstaged_resources[0].address)) // temporary, to demo presenting the model
+            .borders(Borders::ALL);
+        rect.render_widget(block, size);
+    })?;
     Ok(())
+}
+
+fn get_msg(asi: &mut termion::AsyncReader) -> Msg {
+    for key in asi.by_ref().keys() {
+        match key.unwrap() {
+            Key::Char('q') => return Msg::Quit,
+            _ => return Msg::DoNothing,
+        };
+    }
+    Msg::DoNothing
 }
 
 #[derive(Deserialize)]
@@ -77,6 +125,25 @@ pub trait Terraform {
 
 pub trait Filesystem {
     fn file_exists(&self, path: &str) -> bool;
+}
+
+struct Model {
+    staged_operations: Vec<String>,
+    unstaged_resources: Vec<ChangingResource>,
+}
+
+impl Model {
+    fn init(tfplan: TfPlan) -> Model {
+        Model {
+            staged_operations: vec![],
+            unstaged_resources: tfplan.changing_resources,
+        }
+    }
+}
+
+enum Msg {
+    DoNothing,
+    Quit,
 }
 
 #[cfg(test)]
