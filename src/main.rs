@@ -1,10 +1,11 @@
+use std::error::Error;
 use std::path::Path;
 use std::process::Command;
 
 use sandu::{Clients, Filesystem, Sandu, Terraform};
 use structopt::StructOpt;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn Error>> {
     let sandu = Sandu::from_args();
     let clients = Clients {
         filesystem: &LocalFilesystem {},
@@ -16,11 +17,10 @@ fn main() -> Result<(), String> {
 
 struct TerraformCli {}
 impl Terraform for TerraformCli {
-    fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String> {
+    fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         let cmd = Command::new("terraform")
             .args(["show", "-json", &planfile])
-            .output()
-            .expect("Failed to execute terraform show -json with provided plan file");
+            .output()?;
         Ok(cmd.stdout)
     }
 }

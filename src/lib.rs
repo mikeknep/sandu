@@ -1,4 +1,7 @@
 use serde::Deserialize;
+use std::error::Error;
+use std::fmt;
+use std::io::{self, Read};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -12,15 +15,37 @@ pub struct Clients<'a> {
     pub terraform: &'a dyn Terraform,
 }
 
-pub fn run(sandu: Sandu, clients: Clients) -> Result<(), String> {
-    if !clients.filesystem.file_exists(&sandu.planfile) {
-        return Err("Provided file does not exist".to_string());
+#[derive(Debug)]
+struct SanduError {
+    details: String,
+}
+
+impl SanduError {
+    fn new(msg: &str) -> Box<SanduError> {
+        Box::new(SanduError {
+            details: msg.to_string(),
+        })
     }
-    let json_bytes = clients
-        .terraform
-        .show_plan(&sandu.planfile)
-        .expect("Invalid Terraform plan file provided");
-    let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes).unwrap();
+}
+
+impl fmt::Display for SanduError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.details)
+    }
+}
+
+impl Error for SanduError {
+    fn description(&self) -> &str {
+        &self.details
+    }
+}
+
+pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
+    if !clients.filesystem.file_exists(&sandu.planfile) {
+        return Err(SanduError::new("Provided file does not exist"));
+    }
+    let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
+    let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes)?;
     Ok(())
 }
 
@@ -47,7 +72,7 @@ struct Change {
 }
 
 pub trait Terraform {
-    fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String>;
+    fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 pub trait Filesystem {
@@ -62,8 +87,8 @@ mod tests {
     struct FailClient {}
 
     impl Terraform for FailClient {
-        fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, String> {
-            Err("Terraform failed!".to_string())
+        fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+            Err(SanduError::new("Terraform failed!"))
         }
     }
 
@@ -84,6 +109,6 @@ mod tests {
         };
 
         let result = run(sandu, clients);
-        assert_eq!(Err("Provided file does not exist".to_string()), result);
+        assert!(result.is_err());
     }
 }
