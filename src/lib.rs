@@ -6,9 +6,14 @@ use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
-use tui::backend::{Backend, TermionBackend};
-use tui::widgets::{Block, Borders};
-use tui::Terminal;
+use tui::{
+    backend::{Backend, TermionBackend},
+    layout::{Alignment, Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::Span,
+    widgets::{Block, BorderType, Borders},
+    Terminal,
+};
 
 #[derive(StructOpt)]
 #[structopt(name = "sandu", about = "Interactive Terraform state surgery")]
@@ -77,12 +82,73 @@ fn draw<B>(terminal: &mut Terminal<B>, model: &Model) -> Result<(), Box<dyn Erro
 where
     B: Backend,
 {
-    terminal.draw(|rect| {
-        let size = rect.size();
-        let block = Block::default()
+    terminal.draw(|f| {
+        let size = f.size();
+        let canvas = Block::default()
             .title(format!("{:?}", model.unstaged_resources[0].address)) // temporary, to demo presenting the model
             .borders(Borders::ALL);
-        rect.render_widget(block, size);
+
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .margin(1)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+            .split(f.size());
+
+        let operations_pane = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(
+                [
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(40),
+                ]
+                .as_ref(),
+            )
+            .split(panes[0]);
+
+        let types = Block::default()
+            .title(vec![Span::from("Types")])
+            .style(Style::default().bg(Color::Blue));
+
+        let destroying = Block::default()
+            .title(vec![Span::from("Destroying")])
+            .style(Style::default().bg(Color::Red));
+
+        let creating = Block::default()
+            .title(vec![Span::from("Creating")])
+            .style(Style::default().bg(Color::Green));
+
+        let preview_pane = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+            .split(panes[1]);
+
+        let resource_preview = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(preview_pane[0]);
+
+        let creating_preview = Block::default()
+            .title(vec![Span::from("Creating")])
+            .style(Style::default().bg(Color::Green));
+
+        let destroying_preview = Block::default()
+            .title(vec![Span::from("Destroying")])
+            .style(Style::default().bg(Color::Red));
+
+        let help = Block::default()
+            .title(vec![Span::from("Help")])
+            .style(Style::default());
+
+        f.render_widget(canvas, size);
+        f.render_widget(types, operations_pane[0]);
+        f.render_widget(destroying, operations_pane[1]);
+        f.render_widget(creating, operations_pane[2]);
+        f.render_widget(creating_preview, resource_preview[0]);
+        f.render_widget(destroying_preview, resource_preview[1]);
+        f.render_widget(help, preview_pane[1]);
     })?;
     Ok(())
 }
