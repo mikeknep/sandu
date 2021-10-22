@@ -22,12 +22,12 @@ pub struct Clients<'a> {
 }
 
 #[derive(Debug)]
-struct SanduError {
+pub struct SanduError {
     details: String,
 }
 
 impl SanduError {
-    fn new(msg: &str) -> Box<SanduError> {
+    pub fn new(msg: &str) -> Box<SanduError> {
         Box::new(SanduError {
             details: msg.to_string(),
         })

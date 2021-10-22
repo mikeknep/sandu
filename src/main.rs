@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::Path;
 use std::process::Command;
 
-use sandu::{Clients, Filesystem, Sandu, Terraform};
+use sandu::{Clients, Filesystem, Sandu, SanduError, Terraform};
 use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -21,7 +21,13 @@ impl Terraform for TerraformCli {
         let cmd = Command::new("terraform")
             .args(["show", "-json", planfile])
             .output()?;
-        Ok(cmd.stdout)
+        if cmd.status.success() {
+            Ok(cmd.stdout)
+        } else {
+            Err(SanduError::new(
+                "Could not run `terraform show -json` on provided file",
+            ))
+        }
     }
 }
 
