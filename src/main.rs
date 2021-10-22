@@ -19,7 +19,7 @@ struct TerraformCli {}
 impl Terraform for TerraformCli {
     fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         let cmd = Command::new("terraform")
-            .args(["show", "-json", &planfile])
+            .args(["show", "-json", planfile])
             .output()?;
         Ok(cmd.stdout)
     }

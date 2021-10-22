@@ -58,7 +58,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut asi = termion::async_stdin();
+    let mut asi = termion::async_stdin().keys();
     terminal.clear()?;
 
     loop {
@@ -87,14 +87,11 @@ where
     Ok(())
 }
 
-fn get_msg(asi: &mut termion::AsyncReader) -> Msg {
-    for key in asi.by_ref().keys() {
-        match key.unwrap() {
-            Key::Char('q') => return Msg::Quit,
-            _ => return Msg::DoNothing,
-        };
+fn get_msg(asi: &mut termion::input::Keys<termion::AsyncReader>) -> Msg {
+    match asi.next() {
+        Some(Ok(Key::Char('q'))) => Msg::Quit,
+        _ => Msg::DoNothing,
     }
-    Msg::DoNothing
 }
 
 #[derive(Deserialize)]
