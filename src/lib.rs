@@ -213,6 +213,7 @@ enum Msg {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use serde_json::json;
 
     struct FailClient {}
 
@@ -240,5 +241,38 @@ mod tests {
 
         let result = run(sandu, clients);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn all_changing_resources_are_unstaged_on_model_init() {
+        let tfplan = TfPlan {
+            changing_resources: vec![
+                ChangingResource {
+                    address: "module.original.random_pet.tapu".to_string(),
+                    name: "tapu".to_string(),
+                    provider_name: "registry.terraform.io/hashicorp/random".to_string(),
+                    r#type: "random_pet".to_string(),
+                    change: Change {
+                        actions: vec!["delete".to_string()],
+                        before: Some(json!({ "id": "careful-escargot", "separator" : "-" })),
+                        after: None,
+                    },
+                },
+                ChangingResource {
+                    address: "module.changed.random_pet.tapu".to_string(),
+                    name: "tapu".to_string(),
+                    provider_name: "registry.terraform.io/hashicorp/random".to_string(),
+                    r#type: "random_pet".to_string(),
+                    change: Change {
+                        actions: vec!["create".to_string()],
+                        before: None,
+                        after: Some(json!({ "separator" : "-" })),
+                    },
+                },
+            ],
+        };
+        let model = Model::init(tfplan);
+
+        assert_eq!(2, model.unstaged_resources.len());
     }
 }
