@@ -1,17 +1,17 @@
 use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
-use std::io::{self, Read};
+use std::io;
 use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use tui::{
     backend::{Backend, TermionBackend},
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
     text::Span,
-    widgets::{Block, BorderType, Borders},
+    widgets::{Block, Borders},
     Terminal,
 };
 
@@ -146,8 +146,8 @@ where
         f.render_widget(types, operations_pane[0]);
         f.render_widget(destroying, operations_pane[1]);
         f.render_widget(creating, operations_pane[2]);
-        f.render_widget(creating_preview, resource_preview[0]);
-        f.render_widget(destroying_preview, resource_preview[1]);
+        f.render_widget(destroying_preview, resource_preview[0]);
+        f.render_widget(creating_preview, resource_preview[1]);
         f.render_widget(help, preview_pane[1]);
     })?;
     Ok(())
