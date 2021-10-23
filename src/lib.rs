@@ -178,8 +178,8 @@ struct ChangingResource {
 #[derive(Deserialize)]
 struct Change {
     actions: Vec<String>,
-    after: Option<serde_json::Map<String, serde_json::Value>>,
-    before: Option<serde_json::Map<String, serde_json::Value>>,
+    after: Option<serde_json::Value>,
+    before: Option<serde_json::Value>,
 }
 
 pub trait Terraform {
