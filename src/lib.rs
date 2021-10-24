@@ -58,7 +58,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes)?;
 
-    let model = Model::init(tfplan);
+    let mut model = Model::init(tfplan);
 
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
@@ -69,13 +69,20 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     loop {
         draw(&mut terminal, &model)?;
         match get_msg(&mut asi) {
+            Msg::PreviousPane => {
+                model.active_pane = model.active_pane.prev();
+            }
+            Msg::NextPane => {
+                model.active_pane = model.active_pane.next();
+            }
             Msg::Quit => {
                 terminal.clear()?;
-                return Ok(());
+                break;
             }
             Msg::DoNothing => {}
         }
     }
+    return Ok(());
 }
 
 fn draw<B>(terminal: &mut Terminal<B>, model: &Model) -> Result<(), Box<dyn Error>>
@@ -145,6 +152,8 @@ where
 
 fn get_msg(asi: &mut termion::input::Keys<termion::AsyncReader>) -> Msg {
     match asi.next() {
+        Some(Ok(Key::Char('h'))) => Msg::PreviousPane,
+        Some(Ok(Key::Char('l'))) => Msg::NextPane,
         Some(Ok(Key::Char('q'))) => Msg::Quit,
         _ => Msg::DoNothing,
     }
@@ -226,9 +235,31 @@ impl Pane {
             .border_style(Style::default().fg(border_color))
             .borders(Borders::ALL)
     }
+
+    fn next(&self) -> Pane {
+        match *self {
+            Pane::TypesList => Pane::DestroyingList,
+            Pane::DestroyingList => Pane::CreatingList,
+            Pane::CreatingList => Pane::StagedOperations,
+            Pane::StagedOperations => Pane::TypesList,
+            _ => panic!("No other panes can ever be active!"),
+        }
+    }
+
+    fn prev(&self) -> Pane {
+        match *self {
+            Pane::TypesList => Pane::StagedOperations,
+            Pane::DestroyingList => Pane::TypesList,
+            Pane::CreatingList => Pane::DestroyingList,
+            Pane::StagedOperations => Pane::CreatingList,
+            _ => panic!("No other panes can ever be active!"),
+        }
+    }
 }
 
 enum Msg {
+    PreviousPane,
+    NextPane,
     DoNothing,
     Quit,
 }
