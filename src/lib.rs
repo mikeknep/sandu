@@ -83,20 +83,13 @@ where
     B: Backend,
 {
     terminal.draw(|f| {
-        let size = f.size();
-        let canvas = Block::default()
-            .title(format!("{:?}", model.unstaged_resources[0].address)) // temporary, to demo presenting the model
-            .borders(Borders::ALL);
-
         let panes = Layout::default()
             .direction(Direction::Horizontal)
-            .margin(1)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
             .split(f.size());
 
         let operations_pane = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
             .constraints(
                 [
                     Constraint::Percentage(20),
@@ -109,20 +102,35 @@ where
 
         let types = Block::default()
             .title(vec![Span::from("Types")])
-            .style(Style::default().bg(Color::Blue));
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
         let destroying = Block::default()
-            .title(vec![Span::from("Destroying")])
-            .style(Style::default().bg(Color::Red));
+            .title(vec![Span::styled(
+                "Destroying",
+                Style::default().fg(Color::Red),
+            )])
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
         let creating = Block::default()
-            .title(vec![Span::from("Creating")])
-            .style(Style::default().bg(Color::Green));
+            .title(vec![Span::styled(
+                "Creating",
+                Style::default().fg(Color::Green),
+            )])
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
         let preview_pane = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+            .constraints(
+                [
+                    Constraint::Percentage(70),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(10),
+                ]
+                .as_ref(),
+            )
             .split(panes[1]);
 
         let resource_preview = Layout::default()
@@ -131,24 +139,38 @@ where
             .split(preview_pane[0]);
 
         let creating_preview = Block::default()
-            .title(vec![Span::from("Creating")])
-            .style(Style::default().bg(Color::Green));
+            .title(vec![Span::styled(
+                "Creating",
+                Style::default().fg(Color::Green),
+            )])
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
         let destroying_preview = Block::default()
-            .title(vec![Span::from("Destroying")])
-            .style(Style::default().bg(Color::Red));
+            .title(vec![Span::styled(
+                "Destroying",
+                Style::default().fg(Color::Red),
+            )])
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
+
+        let staged = Block::default()
+            .title(vec![Span::from("Staged")])
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
         let help = Block::default()
             .title(vec![Span::from("Help")])
-            .style(Style::default());
+            .border_style(Style::default().fg(Color::Gray))
+            .borders(Borders::ALL);
 
-        f.render_widget(canvas, size);
         f.render_widget(types, operations_pane[0]);
         f.render_widget(destroying, operations_pane[1]);
         f.render_widget(creating, operations_pane[2]);
         f.render_widget(destroying_preview, resource_preview[0]);
         f.render_widget(creating_preview, resource_preview[1]);
-        f.render_widget(help, preview_pane[1]);
+        f.render_widget(staged, preview_pane[1]);
+        f.render_widget(help, preview_pane[2]);
     })?;
     Ok(())
 }
