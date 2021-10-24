@@ -100,27 +100,6 @@ where
             )
             .split(panes[0]);
 
-        let types = Block::default()
-            .title(vec![Span::from("Types")])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        let destroying = Block::default()
-            .title(vec![Span::styled(
-                "Destroying",
-                Style::default().fg(Color::Red),
-            )])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        let creating = Block::default()
-            .title(vec![Span::styled(
-                "Creating",
-                Style::default().fg(Color::Green),
-            )])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
         let preview_pane = Layout::default()
             .direction(Direction::Vertical)
             .constraints(
@@ -138,39 +117,28 @@ where
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(preview_pane[0]);
 
-        let creating_preview = Block::default()
-            .title(vec![Span::styled(
-                "Creating",
-                Style::default().fg(Color::Green),
-            )])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        let destroying_preview = Block::default()
-            .title(vec![Span::styled(
-                "Destroying",
-                Style::default().fg(Color::Red),
-            )])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        let staged = Block::default()
-            .title(vec![Span::from("Staged")])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        let help = Block::default()
-            .title(vec![Span::from("Help")])
-            .border_style(Style::default().fg(Color::Gray))
-            .borders(Borders::ALL);
-
-        f.render_widget(types, operations_pane[0]);
-        f.render_widget(destroying, operations_pane[1]);
-        f.render_widget(creating, operations_pane[2]);
-        f.render_widget(destroying_preview, resource_preview[0]);
-        f.render_widget(creating_preview, resource_preview[1]);
-        f.render_widget(staged, preview_pane[1]);
-        f.render_widget(help, preview_pane[2]);
+        f.render_widget(Pane::TypesList.draw(&model.active_pane), operations_pane[0]);
+        f.render_widget(
+            Pane::DestroyingList.draw(&model.active_pane),
+            operations_pane[1],
+        );
+        f.render_widget(
+            Pane::CreatingList.draw(&model.active_pane),
+            operations_pane[2],
+        );
+        f.render_widget(
+            Pane::DestroyingPreview.draw(&model.active_pane),
+            resource_preview[0],
+        );
+        f.render_widget(
+            Pane::CreatingPreview.draw(&model.active_pane),
+            resource_preview[1],
+        );
+        f.render_widget(
+            Pane::StagedOperations.draw(&model.active_pane),
+            preview_pane[1],
+        );
+        f.render_widget(Pane::Help.draw(&model.active_pane), preview_pane[2]);
     })?;
     Ok(())
 }
@@ -215,6 +183,7 @@ pub trait Filesystem {
 struct Model {
     staged_operations: Vec<String>,
     unstaged_resources: Vec<ChangingResource>,
+    active_pane: Pane,
 }
 
 impl Model {
@@ -222,7 +191,40 @@ impl Model {
         Model {
             staged_operations: vec![],
             unstaged_resources: tfplan.changing_resources,
+            active_pane: Pane::TypesList,
         }
+    }
+}
+
+enum Pane {
+    TypesList,
+    DestroyingList,
+    CreatingList,
+    DestroyingPreview,
+    CreatingPreview,
+    StagedOperations,
+    Help,
+}
+
+impl Pane {
+    fn draw(&self, active_pane: &Pane) -> Block {
+        let text = match *self {
+            Pane::TypesList => "Types",
+            Pane::DestroyingList | Pane::DestroyingPreview => "Destroying",
+            Pane::CreatingList | Pane::CreatingPreview => "Creating",
+            Pane::StagedOperations => "Staged",
+            Pane::Help => "Help",
+        };
+        let border_color = if std::mem::discriminant(self) == std::mem::discriminant(active_pane) {
+            Color::Yellow
+        } else {
+            Color::Gray
+        };
+
+        Block::default()
+            .title(vec![Span::from(text)])
+            .border_style(Style::default().fg(border_color))
+            .borders(Borders::ALL)
     }
 }
 
