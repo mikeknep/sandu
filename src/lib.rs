@@ -63,12 +63,12 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut asi = termion::async_stdin().keys();
+    let mut keys = io::stdin().keys();
     terminal.clear()?;
 
     loop {
         draw(&mut terminal, &model)?;
-        match get_msg(&mut asi) {
+        match get_msg(&keys.next()) {
             Msg::PreviousPane => {
                 model.active_pane = model.active_pane.prev();
             }
@@ -150,8 +150,8 @@ where
     Ok(())
 }
 
-fn get_msg(asi: &mut termion::input::Keys<termion::AsyncReader>) -> Msg {
-    match asi.next() {
+fn get_msg(key: &Option<Result<Key, io::Error>>) -> Msg {
+    match key {
         Some(Ok(Key::Char('h'))) => Msg::PreviousPane,
         Some(Ok(Key::Char('l'))) => Msg::NextPane,
         Some(Ok(Key::Char('q'))) => Msg::Quit,
