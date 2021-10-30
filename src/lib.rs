@@ -281,6 +281,7 @@ impl Model {
     }
 }
 
+#[derive(PartialEq)]
 enum Pane {
     TypesList,
     DestroyingList,
@@ -300,7 +301,7 @@ impl Pane {
             Pane::StagedOperations => "Staged",
             Pane::Help => "Help",
         };
-        let border_color = if std::mem::discriminant(self) == std::mem::discriminant(active_pane) {
+        let border_color = if self == active_pane {
             Color::Yellow
         } else {
             Color::Gray
