@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -169,8 +170,6 @@ struct TfPlan {
 struct ChangingResource {
     address: String,
     change: Change,
-    name: String,
-    provider_name: String,
     r#type: String,
 }
 
@@ -190,17 +189,94 @@ pub trait Filesystem {
 }
 
 struct Model {
-    staged_operations: Vec<String>,
-    unstaged_resources: Vec<ChangingResource>,
     active_pane: Pane,
+    planned_creations: Vec<Resource>,
+    planned_deletions: Vec<Resource>,
+    staged_operations: Vec<Operation>,
+}
+
+#[derive(Debug, PartialEq)]
+struct Resource {
+    address: String,
+    planned_action: PlannedAction,
+    preview: serde_json::Value,
+    status: Status,
+    r#type: String,
+}
+
+impl TryFrom<&ChangingResource> for Resource {
+    type Error = &'static str;
+
+    fn try_from(cr: &ChangingResource) -> Result<Self, Self::Error> {
+        let planned_action = match cr
+            .change
+            .actions
+            .iter()
+            .map(|a| a.as_str())
+            .collect::<Vec<&str>>()[..]
+        {
+            ["create"] => PlannedAction::Create,
+            ["delete"] => PlannedAction::Delete,
+            _ => return Err("No state operations exist to affect planned actions"),
+        };
+
+        let preview = match (&cr.change.before, &cr.change.after) {
+            (Some(before), None) => before,
+            (None, Some(after)) => after,
+            _ => return Err("No state operations exist to affect planned actions"),
+        };
+
+        Ok(Resource {
+            address: cr.address.clone(),
+            planned_action: planned_action,
+            preview: preview.clone(),
+            r#type: cr.r#type.clone(),
+            status: Status::Unstaged,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum PlannedAction {
+    Create,
+    Delete,
+}
+
+#[derive(Debug, PartialEq)]
+enum Status {
+    Staged,
+    Unstaged,
+}
+
+enum Operation {
+    Move { from: String, to: String },
+    Import { address: String, identifier: String },
+    Remove(String),
 }
 
 impl Model {
     fn init(tfplan: TfPlan) -> Model {
+        let creates_and_deletes =
+            tfplan
+                .changing_resources
+                .iter()
+                .fold((vec![], vec![]), |mut acc, cr| {
+                    let conversion: Result<Resource, _> = cr.try_into();
+                    match conversion {
+                        Ok(resource) => match resource.planned_action {
+                            PlannedAction::Create => acc.0.push(resource),
+                            PlannedAction::Delete => acc.1.push(resource),
+                        },
+                        _ => {}
+                    }
+                    acc
+                });
+
         Model {
-            staged_operations: vec![],
-            unstaged_resources: tfplan.changing_resources,
             active_pane: Pane::TypesList,
+            planned_creations: creates_and_deletes.0,
+            planned_deletions: creates_and_deletes.1,
+            staged_operations: vec![],
         }
     }
 }
@@ -273,13 +349,13 @@ mod tests {
     struct FailClient {}
 
     impl Terraform for FailClient {
-        fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        fn show_plan(&self, _: &str) -> Result<Vec<u8>, Box<dyn Error>> {
             Err(SanduError::new("Terraform failed!"))
         }
     }
 
     impl Filesystem for FailClient {
-        fn file_exists(&self, path: &str) -> bool {
+        fn file_exists(&self, _: &str) -> bool {
             return false;
         }
     }
@@ -299,24 +375,28 @@ mod tests {
     }
 
     #[test]
-    fn all_changing_resources_are_unstaged_on_model_init() {
+    fn a_changing_resource_with_two_actions_is_immovable_and_cannot_be_coerced_to_a_model_resource()
+    {
+        let invalid = ChangingResource {
+            address: "module.original.random_pet.tapu".to_string(),
+            r#type: "random_pet".to_string(),
+            change: Change {
+                actions: vec!["create".to_string(), "delete".to_string()],
+                before: Some(json!({ "id": "careful-escargot", "separator" : "-" })),
+                after: Some(json!({ "separator" : "-" })),
+            },
+        };
+        let failed_convert: Result<Resource, &'static str> = (&invalid).try_into();
+
+        assert!(failed_convert.is_err());
+    }
+
+    #[test]
+    fn initialize_a_model_from_a_plan() {
         let tfplan = TfPlan {
             changing_resources: vec![
                 ChangingResource {
-                    address: "module.original.random_pet.tapu".to_string(),
-                    name: "tapu".to_string(),
-                    provider_name: "registry.terraform.io/hashicorp/random".to_string(),
-                    r#type: "random_pet".to_string(),
-                    change: Change {
-                        actions: vec!["delete".to_string()],
-                        before: Some(json!({ "id": "careful-escargot", "separator" : "-" })),
-                        after: None,
-                    },
-                },
-                ChangingResource {
                     address: "module.changed.random_pet.tapu".to_string(),
-                    name: "tapu".to_string(),
-                    provider_name: "registry.terraform.io/hashicorp/random".to_string(),
                     r#type: "random_pet".to_string(),
                     change: Change {
                         actions: vec!["create".to_string()],
@@ -324,10 +404,38 @@ mod tests {
                         after: Some(json!({ "separator" : "-" })),
                     },
                 },
+                ChangingResource {
+                    address: "module.original.random_pet.tapu".to_string(),
+                    r#type: "random_pet".to_string(),
+                    change: Change {
+                        actions: vec!["delete".to_string()],
+                        before: Some(json!({ "id": "careful-escargot", "separator" : "-" })),
+                        after: None,
+                    },
+                },
             ],
         };
         let model = Model::init(tfplan);
 
-        assert_eq!(2, model.unstaged_resources.len());
+        assert_eq!(1, model.planned_creations.len());
+        assert_eq!(1, model.planned_deletions.len());
+
+        let expected_create = Resource {
+            address: "module.changed.random_pet.tapu".to_string(),
+            planned_action: PlannedAction::Create,
+            preview: json!({ "separator": "-" }),
+            status: Status::Unstaged,
+            r#type: "random_pet".to_string(),
+        };
+        assert_eq!(expected_create, model.planned_creations[0]);
+
+        let expected_delete = Resource {
+            address: "module.original.random_pet.tapu".to_string(),
+            planned_action: PlannedAction::Delete,
+            preview: json!({ "id": "careful-escargot", "separator": "-" }),
+            status: Status::Unstaged,
+            r#type: "random_pet".to_string(),
+        };
+        assert_eq!(expected_delete, model.planned_deletions[0]);
     }
 }
