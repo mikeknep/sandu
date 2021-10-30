@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use serde::Deserialize;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
@@ -12,7 +13,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::Span,
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, List, ListItem},
     Terminal,
 };
 
@@ -125,7 +126,17 @@ where
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(preview_pane[0]);
 
-        f.render_widget(Pane::TypesList.draw(&model.active_pane), operations_pane[0]);
+        let types_list_values: Vec<ListItem> = model
+            .types()
+            .iter()
+            .map(|t| ListItem::new(Span::raw(t.clone())))
+            .collect();
+
+        f.render_widget(
+            List::new(types_list_values).block(Pane::TypesList.draw(&model.active_pane)),
+            operations_pane[0],
+        );
+
         f.render_widget(
             Pane::DestroyingList.draw(&model.active_pane),
             operations_pane[1],
@@ -278,6 +289,16 @@ impl Model {
             planned_deletions: creates_and_deletes.1,
             staged_operations: vec![],
         }
+    }
+
+    fn types(&self) -> Vec<String> {
+        self.planned_creations
+            .iter()
+            .chain(self.planned_deletions.iter())
+            .map(|resource| resource.r#type.clone())
+            .unique()
+            .sorted()
+            .collect()
     }
 }
 
@@ -438,5 +459,54 @@ mod tests {
             r#type: "random_pet".to_string(),
         };
         assert_eq!(expected_delete, model.planned_deletions[0]);
+    }
+
+    #[test]
+    fn lists_unique_types_in_scope() {
+        let model = Model {
+            active_pane: Pane::TypesList,
+            planned_creations: vec![
+                Resource {
+                    address: "not.relevant".to_string(),
+                    planned_action: PlannedAction::Create,
+                    preview: json!(""),
+                    status: Status::Unstaged,
+                    r#type: "random_pet".to_string(),
+                },
+                Resource {
+                    address: "also.irrelevant".to_string(),
+                    planned_action: PlannedAction::Create,
+                    preview: json!(""),
+                    status: Status::Unstaged,
+                    r#type: "random_pet".to_string(),
+                },
+            ],
+            planned_deletions: vec![
+                Resource {
+                    address: "not.relevant".to_string(),
+                    planned_action: PlannedAction::Create,
+                    preview: json!(""),
+                    status: Status::Unstaged,
+                    r#type: "random_string".to_string(),
+                },
+                Resource {
+                    address: "not.relevant".to_string(),
+                    planned_action: PlannedAction::Create,
+                    preview: json!(""),
+                    status: Status::Unstaged,
+                    r#type: "random_password".to_string(),
+                },
+            ],
+            staged_operations: vec![],
+        };
+
+        assert_eq!(
+            vec![
+                "random_password".to_string(),
+                "random_pet".to_string(),
+                "random_string".to_string(),
+            ],
+            model.types()
+        );
     }
 }
