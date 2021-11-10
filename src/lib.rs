@@ -13,7 +13,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::Span,
-    widgets::{Block, Borders, List, ListItem},
+    widgets::{Block, Borders, List, ListItem, ListState},
     Terminal,
 };
 
@@ -69,7 +69,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     terminal.clear()?;
 
     loop {
-        draw(&mut terminal, &model)?;
+        draw(&mut terminal, &mut model)?;
         match get_msg(&keys.next()) {
             Msg::PreviousPane => {
                 model.active_pane = model.active_pane.prev();
@@ -77,6 +77,12 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             Msg::NextPane => {
                 model.active_pane = model.active_pane.next();
             }
+            Msg::NextListItem => match model.active_pane {
+                Pane::TypesList => {
+                    model.next_type();
+                }
+                _ => {}
+            },
             Msg::Quit => {
                 terminal.clear()?;
                 break;
@@ -87,7 +93,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     return Ok(());
 }
 
-fn draw<B>(terminal: &mut Terminal<B>, model: &Model) -> Result<(), Box<dyn Error>>
+fn draw<B>(terminal: &mut Terminal<B>, model: &mut Model) -> Result<(), Box<dyn Error>>
 where
     B: Backend,
 {
@@ -132,10 +138,11 @@ where
             .map(|t| ListItem::new(Span::raw(t.clone())))
             .collect();
 
-        f.render_widget(
-            List::new(types_list_values).block(Pane::TypesList.draw(&model.active_pane)),
-            operations_pane[0],
-        );
+        let list = List::new(types_list_values)
+            .block(Pane::TypesList.draw(&model.active_pane))
+            .highlight_style(Style::default().bg(Color::Green));
+
+        f.render_stateful_widget(list, operations_pane[0], &mut model.types_list_state);
 
         f.render_widget(
             Pane::DestroyingList.draw(&model.active_pane),
@@ -166,6 +173,7 @@ fn get_msg(key: &Option<Result<Key, io::Error>>) -> Msg {
     match key {
         Some(Ok(Key::Char('h'))) => Msg::PreviousPane,
         Some(Ok(Key::Char('l'))) => Msg::NextPane,
+        Some(Ok(Key::Char('j'))) => Msg::NextListItem,
         Some(Ok(Key::Char('q'))) => Msg::Quit,
         _ => Msg::DoNothing,
     }
@@ -201,6 +209,7 @@ pub trait Filesystem {
 
 struct Model {
     active_pane: Pane,
+    types_list_state: ListState,
     planned_creations: Vec<Resource>,
     planned_deletions: Vec<Resource>,
     staged_operations: Vec<Operation>,
@@ -285,6 +294,7 @@ impl Model {
 
         Model {
             active_pane: Pane::TypesList,
+            types_list_state: ListState::default(),
             planned_creations: creates_and_deletes.0,
             planned_deletions: creates_and_deletes.1,
             staged_operations: vec![],
@@ -299,6 +309,20 @@ impl Model {
             .unique()
             .sorted()
             .collect()
+    }
+
+    fn next_type(&mut self) {
+        let i = match self.types_list_state.selected() {
+            Some(i) => {
+                if i >= self.types().len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.types_list_state.select(Some(i));
     }
 }
 
@@ -358,6 +382,7 @@ impl Pane {
 enum Msg {
     PreviousPane,
     NextPane,
+    NextListItem,
     DoNothing,
     Quit,
 }
@@ -498,6 +523,7 @@ mod tests {
                 },
             ],
             staged_operations: vec![],
+            types_list_state: ListState::default(),
         };
 
         assert_eq!(
