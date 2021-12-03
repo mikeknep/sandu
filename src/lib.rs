@@ -150,15 +150,16 @@ where
 
         f.render_stateful_widget(list, operations_pane[0], &mut model.types_list_state);
 
-        let destroying_list_values: Vec<ListItem> = model
-            .planned_deletions
-            .iter()
-            .filter(|resource| {
-                // Keep an eye on Option#contains (currently nightly) https://doc.rust-lang.org/std/option/enum.Option.html#method.contains
-                model.selected_type().is_some() && model.selected_type().unwrap() == resource.r#type
-            })
-            .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
-            .collect();
+        let destroying_list_values: Vec<ListItem> = if let Some(r#type) = model.selected_type() {
+            model
+                .planned_deletions
+                .iter()
+                .filter(|resource| r#type == resource.r#type)
+                .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let destroying_list = List::new(destroying_list_values)
             .block(Pane::DestroyingList.draw(&model.active_pane))
@@ -170,15 +171,16 @@ where
             &mut model.destroying_list_state,
         );
 
-        let creating_list_values: Vec<ListItem> = model
-            .planned_creations
-            .iter()
-            .filter(|resource| {
-                // Keep an eye on Option#contains (currently nightly) https://doc.rust-lang.org/std/option/enum.Option.html#method.contains
-                model.selected_type().is_some() && model.selected_type().unwrap() == resource.r#type
-            })
-            .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
-            .collect();
+        let creating_list_values: Vec<ListItem> = if let Some(r#type) = model.selected_type() {
+            model
+                .planned_creations
+                .iter()
+                .filter(|resource| r#type == resource.r#type)
+                .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let creating_list = List::new(creating_list_values)
             .block(Pane::CreatingList.draw(&model.active_pane))
