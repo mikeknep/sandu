@@ -83,6 +83,12 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
                 }
                 _ => {}
             },
+            Msg::PreviousListItem => match model.active_pane {
+                Pane::TypesList => {
+                    model.previous_type();
+                }
+                _ => {}
+            },
             Msg::Quit => {
                 terminal.clear()?;
                 break;
@@ -174,6 +180,7 @@ fn get_msg(key: &Option<Result<Key, io::Error>>) -> Msg {
         Some(Ok(Key::Char('h'))) => Msg::PreviousPane,
         Some(Ok(Key::Char('l'))) => Msg::NextPane,
         Some(Ok(Key::Char('j'))) => Msg::NextListItem,
+        Some(Ok(Key::Char('k'))) => Msg::PreviousListItem,
         Some(Ok(Key::Char('q'))) => Msg::Quit,
         _ => Msg::DoNothing,
     }
@@ -324,6 +331,20 @@ impl Model {
         };
         self.types_list_state.select(Some(i));
     }
+
+    fn previous_type(&mut self) {
+        let i = match self.types_list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.types().len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.types_list_state.select(Some(i));
+    }
 }
 
 #[derive(PartialEq)]
@@ -383,6 +404,7 @@ enum Msg {
     PreviousPane,
     NextPane,
     NextListItem,
+    PreviousListItem,
     DoNothing,
     Quit,
 }
