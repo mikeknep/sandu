@@ -79,13 +79,13 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             }
             Msg::NextListItem => match model.active_pane {
                 Pane::TypesList => {
-                    model.next_type();
+                    cycle_next(model.types(), &mut model.types_list_state);
                 }
                 _ => {}
             },
             Msg::PreviousListItem => match model.active_pane {
                 Pane::TypesList => {
-                    model.previous_type();
+                    cycle_previous(model.types(), &mut model.types_list_state);
                 }
                 _ => {}
             },
@@ -258,6 +258,34 @@ struct Model {
     staged_operations: Vec<Operation>,
 }
 
+fn cycle_next<T>(items: Vec<T>, state: &mut ListState) {
+    let i = match state.selected() {
+        Some(i) => {
+            if i >= items.len() - 1 {
+                0
+            } else {
+                i + 1
+            }
+        }
+        None => 0,
+    };
+    state.select(Some(i));
+}
+
+fn cycle_previous<T>(items: Vec<T>, state: &mut ListState) {
+    let i = match state.selected() {
+        Some(i) => {
+            if i == 0 {
+                items.len() - 1
+            } else {
+                i - 1
+            }
+        }
+        None => 0,
+    };
+    state.select(Some(i));
+}
+
 #[derive(Debug, PartialEq)]
 struct Resource {
     address: String,
@@ -361,34 +389,6 @@ impl Model {
             Some(i) => Some(self.types()[i].clone()),
             None => None,
         }
-    }
-
-    fn next_type(&mut self) {
-        let i = match self.types_list_state.selected() {
-            Some(i) => {
-                if i >= self.types().len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.types_list_state.select(Some(i));
-    }
-
-    fn previous_type(&mut self) {
-        let i = match self.types_list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.types().len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.types_list_state.select(Some(i));
     }
 }
 
