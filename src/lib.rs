@@ -150,14 +150,46 @@ where
 
         f.render_stateful_widget(list, operations_pane[0], &mut model.types_list_state);
 
-        f.render_widget(
-            Pane::DestroyingList.draw(&model.active_pane),
+        let destroying_list_values: Vec<ListItem> = model
+            .planned_deletions
+            .iter()
+            .filter(|resource| {
+                // Keep an eye on Option#contains (currently nightly) https://doc.rust-lang.org/std/option/enum.Option.html#method.contains
+                model.selected_type().is_some() && model.selected_type().unwrap() == resource.r#type
+            })
+            .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
+            .collect();
+
+        let destroying_list = List::new(destroying_list_values)
+            .block(Pane::DestroyingList.draw(&model.active_pane))
+            .highlight_style(Style::default().bg(Color::Green));
+
+        f.render_stateful_widget(
+            destroying_list,
             operations_pane[1],
+            &mut model.destroying_list_state,
         );
-        f.render_widget(
-            Pane::CreatingList.draw(&model.active_pane),
+
+        let creating_list_values: Vec<ListItem> = model
+            .planned_creations
+            .iter()
+            .filter(|resource| {
+                // Keep an eye on Option#contains (currently nightly) https://doc.rust-lang.org/std/option/enum.Option.html#method.contains
+                model.selected_type().is_some() && model.selected_type().unwrap() == resource.r#type
+            })
+            .map(|resource| ListItem::new(Span::raw(resource.address.clone())))
+            .collect();
+
+        let creating_list = List::new(creating_list_values)
+            .block(Pane::CreatingList.draw(&model.active_pane))
+            .highlight_style(Style::default().bg(Color::Green));
+
+        f.render_stateful_widget(
+            creating_list,
             operations_pane[2],
+            &mut model.creating_list_state,
         );
+
         f.render_widget(
             Pane::DestroyingPreview.draw(&model.active_pane),
             resource_preview[0],
@@ -216,6 +248,8 @@ pub trait Filesystem {
 
 struct Model {
     active_pane: Pane,
+    creating_list_state: ListState,
+    destroying_list_state: ListState,
     types_list_state: ListState,
     planned_creations: Vec<Resource>,
     planned_deletions: Vec<Resource>,
@@ -301,6 +335,8 @@ impl Model {
 
         Model {
             active_pane: Pane::TypesList,
+            creating_list_state: ListState::default(),
+            destroying_list_state: ListState::default(),
             types_list_state: ListState::default(),
             planned_creations: creates_and_deletes.0,
             planned_deletions: creates_and_deletes.1,
@@ -316,6 +352,13 @@ impl Model {
             .unique()
             .sorted()
             .collect()
+    }
+
+    fn selected_type(&self) -> Option<String> {
+        match self.types_list_state.selected() {
+            Some(i) => Some(self.types()[i].clone()),
+            None => None,
+        }
     }
 
     fn next_type(&mut self) {
@@ -545,6 +588,8 @@ mod tests {
                 },
             ],
             staged_operations: vec![],
+            creating_list_state: ListState::default(),
+            destroying_list_state: ListState::default(),
             types_list_state: ListState::default(),
         };
 
