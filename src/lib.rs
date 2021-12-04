@@ -81,11 +81,35 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
                 Pane::TypesList => {
                     cycle_next(model.types(), &mut model.types_list_state);
                 }
+                Pane::DestroyingList => {
+                    cycle_next(
+                        model.unstaged_deletions_for_type(),
+                        &mut model.destroying_list_state,
+                    );
+                }
+                Pane::CreatingList => {
+                    cycle_next(
+                        model.unstaged_creations_for_type(),
+                        &mut model.creating_list_state,
+                    );
+                }
                 _ => {}
             },
             Msg::PreviousListItem => match model.active_pane {
                 Pane::TypesList => {
                     cycle_previous(model.types(), &mut model.types_list_state);
+                }
+                Pane::DestroyingList => {
+                    cycle_previous(
+                        model.unstaged_deletions_for_type(),
+                        &mut model.destroying_list_state,
+                    );
+                }
+                Pane::CreatingList => {
+                    cycle_previous(
+                        model.unstaged_creations_for_type(),
+                        &mut model.creating_list_state,
+                    );
                 }
                 _ => {}
             },
@@ -382,6 +406,32 @@ impl Model {
             .unique()
             .sorted()
             .collect()
+    }
+
+    fn unstaged_creations_for_type(&self) -> Vec<String> {
+        if let Some(r#type) = self.selected_type() {
+            self.planned_creations
+                .iter()
+                .filter(|resource| resource.r#type == r#type)
+                .map(|resource| resource.address.clone())
+                .sorted()
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn unstaged_deletions_for_type(&self) -> Vec<String> {
+        if let Some(r#type) = self.selected_type() {
+            self.planned_deletions
+                .iter()
+                .filter(|resource| resource.r#type == r#type)
+                .map(|resource| resource.address.clone())
+                .sorted()
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
     fn selected_type(&self) -> Option<String> {
