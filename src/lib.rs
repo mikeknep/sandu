@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use serde::Deserialize;
+use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::fmt;
@@ -13,7 +14,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::Span,
-    widgets::{Block, Borders, List, ListItem, ListState},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Terminal,
 };
 
@@ -79,17 +80,19 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             }
             Msg::NextListItem => match model.active_pane {
                 Pane::TypesList => {
-                    cycle_next(model.types(), &mut model.types_list_state);
+                    cycle_next(model.types().len(), &mut model.types_list_state);
+                    model.destroying_list_state.select(None);
+                    model.creating_list_state.select(None);
                 }
                 Pane::DestroyingList => {
                     cycle_next(
-                        model.unstaged_deletions_for_type(),
+                        model.unstaged_deletions_for_type().len(),
                         &mut model.destroying_list_state,
                     );
                 }
                 Pane::CreatingList => {
                     cycle_next(
-                        model.unstaged_creations_for_type(),
+                        model.unstaged_creations_for_type().len(),
                         &mut model.creating_list_state,
                     );
                 }
@@ -97,17 +100,19 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             },
             Msg::PreviousListItem => match model.active_pane {
                 Pane::TypesList => {
-                    cycle_previous(model.types(), &mut model.types_list_state);
+                    cycle_previous(model.types().len(), &mut model.types_list_state);
+                    model.destroying_list_state.select(None);
+                    model.creating_list_state.select(None);
                 }
                 Pane::DestroyingList => {
                     cycle_previous(
-                        model.unstaged_deletions_for_type(),
+                        model.unstaged_deletions_for_type().len(),
                         &mut model.destroying_list_state,
                     );
                 }
                 Pane::CreatingList => {
                     cycle_previous(
-                        model.unstaged_creations_for_type(),
+                        model.unstaged_creations_for_type().len(),
                         &mut model.creating_list_state,
                     );
                 }
@@ -216,14 +221,30 @@ where
             &mut model.creating_list_state,
         );
 
+        let pending_deletion_preview =
+            if let Some(resource) = model.selected_resource_pending_deletion() {
+                serde_json::to_string_pretty(&resource.preview).unwrap()
+            } else {
+                "".to_string()
+            };
         f.render_widget(
-            Pane::DestroyingPreview.draw(&model.active_pane),
+            Paragraph::new(pending_deletion_preview.clone())
+                .block(Pane::DestroyingPreview.draw(&model.active_pane)),
             resource_preview[0],
         );
+
+        let pending_creation_preview =
+            if let Some(resource) = model.selected_resource_pending_creation() {
+                serde_json::to_string_pretty(&resource.preview).unwrap()
+            } else {
+                "".to_string()
+            };
         f.render_widget(
-            Pane::CreatingPreview.draw(&model.active_pane),
+            Paragraph::new(pending_creation_preview.clone())
+                .block(Pane::CreatingPreview.draw(&model.active_pane)),
             resource_preview[1],
         );
+
         f.render_widget(
             Pane::StagedOperations.draw(&model.active_pane),
             preview_pane[1],
@@ -282,10 +303,10 @@ struct Model {
     staged_operations: Vec<Operation>,
 }
 
-fn cycle_next<T>(items: Vec<T>, state: &mut ListState) {
+fn cycle_next(items_length: usize, state: &mut ListState) {
     let i = match state.selected() {
         Some(i) => {
-            if i >= items.len() - 1 {
+            if i >= items_length - 1 {
                 0
             } else {
                 i + 1
@@ -296,11 +317,11 @@ fn cycle_next<T>(items: Vec<T>, state: &mut ListState) {
     state.select(Some(i));
 }
 
-fn cycle_previous<T>(items: Vec<T>, state: &mut ListState) {
+fn cycle_previous(items_length: usize, state: &mut ListState) {
     let i = match state.selected() {
         Some(i) => {
             if i == 0 {
-                items.len() - 1
+                items_length - 1
             } else {
                 i - 1
             }
@@ -310,13 +331,25 @@ fn cycle_previous<T>(items: Vec<T>, state: &mut ListState) {
     state.select(Some(i));
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 struct Resource {
     address: String,
     planned_action: PlannedAction,
     preview: serde_json::Value,
     status: Status,
     r#type: String,
+}
+
+impl Ord for Resource {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.address.cmp(&other.address)
+    }
+}
+
+impl PartialOrd for Resource {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.address.cmp(&other.address))
+    }
 }
 
 impl TryFrom<&ChangingResource> for Resource {
@@ -351,13 +384,13 @@ impl TryFrom<&ChangingResource> for Resource {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 enum PlannedAction {
     Create,
     Delete,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 enum Status {
     Staged,
     Unstaged,
@@ -408,12 +441,11 @@ impl Model {
             .collect()
     }
 
-    fn unstaged_creations_for_type(&self) -> Vec<String> {
+    fn unstaged_creations_for_type(&self) -> Vec<&Resource> {
         if let Some(r#type) = self.selected_type() {
             self.planned_creations
                 .iter()
                 .filter(|resource| resource.r#type == r#type)
-                .map(|resource| resource.address.clone())
                 .sorted()
                 .collect()
         } else {
@@ -421,12 +453,11 @@ impl Model {
         }
     }
 
-    fn unstaged_deletions_for_type(&self) -> Vec<String> {
+    fn unstaged_deletions_for_type(&self) -> Vec<&Resource> {
         if let Some(r#type) = self.selected_type() {
             self.planned_deletions
                 .iter()
                 .filter(|resource| resource.r#type == r#type)
-                .map(|resource| resource.address.clone())
                 .sorted()
                 .collect()
         } else {
@@ -438,6 +469,20 @@ impl Model {
         match self.types_list_state.selected() {
             Some(i) => Some(self.types()[i].clone()),
             None => None,
+        }
+    }
+
+    fn selected_resource_pending_deletion(&self) -> Option<&Resource> {
+        match self.destroying_list_state.selected() {
+            None => None,
+            Some(i) => Some(&self.unstaged_deletions_for_type()[i]),
+        }
+    }
+
+    fn selected_resource_pending_creation(&self) -> Option<&Resource> {
+        match self.creating_list_state.selected() {
+            None => None,
+            Some(i) => Some(&self.unstaged_creations_for_type()[i]),
         }
     }
 }
