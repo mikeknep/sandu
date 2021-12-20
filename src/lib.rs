@@ -125,7 +125,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             Msg::DoNothing => {}
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 fn draw<B>(terminal: &mut Terminal<B>, model: &mut Model) -> Result<(), Box<dyn Error>>
@@ -228,7 +228,7 @@ where
                 "".to_string()
             };
         f.render_widget(
-            Paragraph::new(pending_deletion_preview.clone())
+            Paragraph::new(pending_deletion_preview)
                 .block(Pane::DestroyingPreview.draw(&model.active_pane)),
             resource_preview[0],
         );
@@ -240,7 +240,7 @@ where
                 "".to_string()
             };
         f.render_widget(
-            Paragraph::new(pending_creation_preview.clone())
+            Paragraph::new(pending_creation_preview)
                 .block(Pane::CreatingPreview.draw(&model.active_pane)),
             resource_preview[1],
         );
@@ -376,7 +376,7 @@ impl TryFrom<&ChangingResource> for Resource {
 
         Ok(Resource {
             address: cr.address.clone(),
-            planned_action: planned_action,
+            planned_action,
             preview: preview.clone(),
             r#type: cr.r#type.clone(),
             status: Status::Unstaged,
@@ -410,12 +410,11 @@ impl Model {
                 .iter()
                 .fold((vec![], vec![]), |mut acc, cr| {
                     let conversion: Result<Resource, _> = cr.try_into();
-                    match conversion {
-                        Ok(resource) => match resource.planned_action {
+                    if let Ok(resource) = conversion {
+                        match resource.planned_action {
                             PlannedAction::Create => acc.0.push(resource),
                             PlannedAction::Delete => acc.1.push(resource),
-                        },
-                        _ => {}
+                        }
                     }
                     acc
                 });
@@ -466,24 +465,21 @@ impl Model {
     }
 
     fn selected_type(&self) -> Option<String> {
-        match self.types_list_state.selected() {
-            Some(i) => Some(self.types()[i].clone()),
-            None => None,
-        }
+        self.types_list_state
+            .selected()
+            .map(|i| self.types()[i].clone())
     }
 
     fn selected_resource_pending_deletion(&self) -> Option<&Resource> {
-        match self.destroying_list_state.selected() {
-            None => None,
-            Some(i) => Some(&self.unstaged_deletions_for_type()[i]),
-        }
+        self.destroying_list_state
+            .selected()
+            .map(|i| self.unstaged_deletions_for_type()[i])
     }
 
     fn selected_resource_pending_creation(&self) -> Option<&Resource> {
-        match self.creating_list_state.selected() {
-            None => None,
-            Some(i) => Some(&self.unstaged_creations_for_type()[i]),
-        }
+        self.creating_list_state
+            .selected()
+            .map(|i| self.unstaged_creations_for_type()[i])
     }
 }
 
