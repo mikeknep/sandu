@@ -61,7 +61,8 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes)?;
 
-    let mut model = Model::init(tfplan);
+    let mut mdl = Mdl::new(&tfplan);
+    let mut model = Model::init(&tfplan);
 
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
@@ -71,66 +72,10 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
 
     loop {
         draw(&mut terminal, &mut model)?;
-        // match model.state.handle(&keys.next()) {
-        //     Message::Quit => {
-        //         terminal.clear()?;
-        //         break;
-        //     }
-        //     Message::DoNothing => {}
-        //     _ => {}
-        // }
-        match get_msg(&keys.next()) {
-            Msg::PreviousPane => {
-                model.active_pane = model.active_pane.prev();
-            }
-            Msg::NextPane => {
-                model.active_pane = model.active_pane.next();
-            }
-            Msg::NextListItem => match model.active_pane {
-                Pane::TypesList => {
-                    cycle_next(model.types().len(), &mut model.types_list_state);
-                    model.destroying_list_state.select(None);
-                    model.creating_list_state.select(None);
-                }
-                Pane::DestroyingList => {
-                    cycle_next(
-                        model.unstaged_deletions_for_type().len(),
-                        &mut model.destroying_list_state,
-                    );
-                }
-                Pane::CreatingList => {
-                    cycle_next(
-                        model.unstaged_creations_for_type().len(),
-                        &mut model.creating_list_state,
-                    );
-                }
-                _ => {}
-            },
-            Msg::PreviousListItem => match model.active_pane {
-                Pane::TypesList => {
-                    cycle_previous(model.types().len(), &mut model.types_list_state);
-                    model.destroying_list_state.select(None);
-                    model.creating_list_state.select(None);
-                }
-                Pane::DestroyingList => {
-                    cycle_previous(
-                        model.unstaged_deletions_for_type().len(),
-                        &mut model.destroying_list_state,
-                    );
-                }
-                Pane::CreatingList => {
-                    cycle_previous(
-                        model.unstaged_creations_for_type().len(),
-                        &mut model.creating_list_state,
-                    );
-                }
-                _ => {}
-            },
-            Msg::Quit => {
-                terminal.clear()?;
-                break;
-            }
-            Msg::DoNothing => {}
+        if let Some(new_state) = mdl.state.handle(&keys.next()) {
+            mdl.state = new_state;
+        } else {
+            break;
         }
     }
     Ok(())
@@ -262,17 +207,6 @@ where
     Ok(())
 }
 
-fn get_msg(key: &Option<Result<Key, io::Error>>) -> Msg {
-    match key {
-        Some(Ok(Key::Char('h'))) => Msg::PreviousPane,
-        Some(Ok(Key::Char('l'))) => Msg::NextPane,
-        Some(Ok(Key::Char('j'))) => Msg::NextListItem,
-        Some(Ok(Key::Char('k'))) => Msg::PreviousListItem,
-        Some(Ok(Key::Char('q'))) => Msg::Quit,
-        _ => Msg::DoNothing,
-    }
-}
-
 #[derive(Deserialize)]
 struct TfPlan {
     #[serde(rename(deserialize = "resource_changes"))]
@@ -370,57 +304,74 @@ enum State {
 }
 
 impl State {
-    fn handle(&self, key: &Option<Result<Key, io::Error>>) -> Message {
+    fn handle(&self, key: &Option<Result<Key, io::Error>>) -> Option<State> {
         if let Some(Ok(Key::Char('q'))) = key {
-            return Message::Quit;
+            return None;
         }
         match &self {
-            State::ChoosingType { .. } => match key {
-                Some(Ok(Key::Char('j'))) | Some(Ok(Key::Down)) => Message::NextType,
-                Some(Ok(Key::Char('k'))) | Some(Ok(Key::Up)) => Message::PreviousType,
-                Some(Ok(Key::Char('\n'))) => Message::BrowseType,
-                _ => Message::DoNothing,
+            State::ChoosingType { selected, types } => match key {
+                Some(Ok(Key::Char('j'))) | Some(Ok(Key::Down)) => {
+                    let next_index = cycle_next(types.len(), selected);
+                    Some(State::ChoosingType {
+                        selected: Some(next_index),
+                        types: types.clone(),
+                    })
+                }
+                Some(Ok(Key::Char('k'))) | Some(Ok(Key::Up)) => {
+                    let previous_index = cycle_previous(types.len(), selected);
+                    Some(State::ChoosingType {
+                        selected: Some(previous_index),
+                        types: types.clone(),
+                    })
+                }
+                Some(Ok(Key::Char('\n'))) => {
+                    if selected.is_some() {
+                        Some(State::BrowsingResources {
+                            action_in_scope: TerraformAction::Delete,
+                            selected_create: None,
+                            selected_delete: None,
+                        })
+                    } else {
+                        Some(State::ChoosingType {
+                            selected: *selected,
+                            types: types.clone(),
+                        })
+                    }
+                }
+                _ => Some(State::ChoosingType {
+                    selected: *selected,
+                    types: types.clone(),
+                }),
             },
-            State::BrowsingResources { .. } => Message::DoNothing,
+            State::BrowsingResources { .. } => None,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum Message {
-    PreviousType,
-    NextType,
-    BrowseType,
-    DoNothing,
-    Quit,
-}
-
-fn cycle_next(items_length: usize, state: &mut ListState) {
-    let i = match state.selected() {
+fn cycle_next(items_length: usize, selected: &Option<usize>) -> usize {
+    match selected {
         Some(i) => {
-            if i >= items_length - 1 {
+            if *i >= items_length - 1 {
                 0
             } else {
                 i + 1
             }
         }
         None => 0,
-    };
-    state.select(Some(i));
+    }
 }
 
-fn cycle_previous(items_length: usize, state: &mut ListState) {
-    let i = match state.selected() {
+fn cycle_previous(items_length: usize, selected: &Option<usize>) -> usize {
+    match selected {
         Some(i) => {
-            if i == 0 {
+            if *i == 0 {
                 items_length - 1
             } else {
                 i - 1
             }
         }
-        None => 0,
-    };
-    state.select(Some(i));
+        None => items_length - 1,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -496,7 +447,7 @@ enum Operation {
 }
 
 impl Model {
-    fn init(tfplan: TfPlan) -> Model {
+    fn init(tfplan: &TfPlan) -> Model {
         let creates_and_deletes =
             tfplan
                 .changing_resources
@@ -629,15 +580,6 @@ impl Pane {
     }
 }
 
-enum Msg {
-    PreviousPane,
-    NextPane,
-    NextListItem,
-    PreviousListItem,
-    DoNothing,
-    Quit,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,7 +655,7 @@ mod tests {
                 },
             ],
         };
-        let model = Model::init(tfplan);
+        let model = Model::init(&tfplan);
 
         assert_eq!(1, model.planned_creations.len());
         assert_eq!(1, model.planned_deletions.len());
@@ -794,107 +736,159 @@ mod tests {
     }
 
     #[test]
-    fn q_sends_quit_message() {
+    fn q_returns_empty_state() {
         let state = State::ChoosingType {
             selected: None,
             types: vec!["random_pet".to_string()],
         };
-        let message = state.handle(&keypress('q'));
+        let new_state = state.handle(&keypress('q'));
 
-        assert_eq!(Message::Quit, message);
+        assert!(new_state.is_none());
     }
 
     #[test]
-    fn when_choosing_types__j_sends_next_type_message() {
+    fn scroll_forwards_through_types() {
+        let all_types = vec![
+            "random_password".to_string(),
+            "random_pet".to_string(),
+            "random_string".to_string(),
+        ];
         let state = State::ChoosingType {
             selected: None,
-            types: vec!["random_pet".to_string()],
+            types: all_types.clone(),
         };
-        let message = state.handle(&keypress('j'));
 
-        assert_eq!(Message::NextType, message);
+        let next_0 = state.handle(&keypress('j'));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(0),
+                types: all_types.clone()
+            }),
+            next_0
+        );
+
+        let next_1 = next_0.unwrap().handle(&keypress('j'));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(1),
+                types: all_types.clone()
+            }),
+            next_1
+        );
+
+        let next_2 = next_1.unwrap().handle(&Some(Ok(Key::Down)));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(2),
+                types: all_types.clone()
+            }),
+            next_2
+        );
+
+        let next_reset = next_2.unwrap().handle(&Some(Ok(Key::Down)));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(0),
+                types: all_types.clone()
+            }),
+            next_reset
+        );
     }
 
     #[test]
-    fn when_choosing_types__down_sends_next_type_message() {
+    fn scroll_backwards_through_types() {
+        let all_types = vec![
+            "random_password".to_string(),
+            "random_pet".to_string(),
+            "random_string".to_string(),
+        ];
         let state = State::ChoosingType {
             selected: None,
-            types: vec!["random_pet".to_string()],
+            types: all_types.clone(),
         };
-        let message = state.handle(&Some(Ok(Key::Down)));
 
-        assert_eq!(Message::NextType, message);
+        let prev_2 = state.handle(&keypress('k'));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(2),
+                types: all_types.clone()
+            }),
+            prev_2
+        );
+
+        let prev_1 = prev_2.unwrap().handle(&keypress('k'));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(1),
+                types: all_types.clone()
+            }),
+            prev_1
+        );
+
+        let prev_0 = prev_1.unwrap().handle(&Some(Ok(Key::Up)));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(0),
+                types: all_types.clone()
+            }),
+            prev_0
+        );
+
+        let prev_reset = prev_0.unwrap().handle(&Some(Ok(Key::Up)));
+
+        assert_eq!(
+            Some(State::ChoosingType {
+                selected: Some(2),
+                types: all_types.clone()
+            }),
+            prev_reset
+        );
     }
 
     #[test]
-    fn when_choosing_types__k_sends_previous_type_message() {
+    fn attempting_to_browse_type_no_type_is_selected_returns_identical_state() {
+        let all_types = vec![
+            "random_password".to_string(),
+            "random_pet".to_string(),
+            "random_string".to_string(),
+        ];
         let state = State::ChoosingType {
             selected: None,
-            types: vec!["random_pet".to_string()],
+            types: all_types.clone(),
         };
-        let message = state.handle(&keypress('j'));
 
-        assert_eq!(Message::NextType, message);
+        let new_state = state.handle(&keypress('\n'));
+
+        assert_eq!(Some(state), new_state);
     }
 
     #[test]
-    fn when_choosing_types__up_sends_previous_type_message() {
+    fn browsing_type_moves_state_when_type_is_selected() {
+        let all_types = vec![
+            "random_password".to_string(),
+            "random_pet".to_string(),
+            "random_string".to_string(),
+        ];
         let state = State::ChoosingType {
-            selected: None,
-            types: vec!["random_pet".to_string()],
-        };
-        let message = state.handle(&Some(Ok(Key::Up)));
-
-        assert_eq!(Message::PreviousType, message);
-    }
-
-    #[test]
-    fn when_choosing_types__return_sends_browse_type_message() {
-        let state = State::ChoosingType {
-            selected: None,
-            types: vec!["random_pet".to_string()],
-        };
-        let message = state.handle(&keypress('\n'));
-
-        assert_eq!(Message::BrowseType, message);
-    }
-
-    #[test]
-    fn browse_type_does_nothing_when_no_type_is_selected() {
-        let tfplan = TfPlan {
-            changing_resources: vec![],
-        };
-        let mut model = Mdl::new(&tfplan);
-        browse_type(&mut model);
-
-        assert_eq!(Mdl::new(&tfplan), model);
-    }
-
-    #[test]
-    fn browse_type_moves_state_when_type_is_selected() {
-        let tfplan = TfPlan {
-            changing_resources: vec![ChangingResource {
-                address: "random_pet.tapu".to_string(),
-                r#type: "random_pet".to_string(),
-                change: Change {
-                    actions: vec!["create".to_string()],
-                    before: None,
-                    after: Some(json!({ "separator" : "-" })),
-                },
-            }],
-        };
-        let mut model = Mdl::new(&tfplan);
-        model.state = State::ChoosingType {
             selected: Some(0),
-            types: vec!["random_pet".to_string()],
+            types: all_types.clone(),
         };
-        browse_type(&mut model);
+
+        let new_state = state.handle(&keypress('\n'));
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
             selected_delete: None,
         };
-        assert_eq!(expected_state, model.state);
+
+        assert_eq!(Some(expected_state), new_state);
     }
 }
