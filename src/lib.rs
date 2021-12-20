@@ -311,22 +311,37 @@ struct Model {
     staged_operations: Vec<Operation>,
 }
 
+#[derive(Debug, PartialEq)]
 struct Mdl {
     staged_operations: Vec<Operation>,
     state: State,
 }
 
 impl Mdl {
-    fn new() -> Mdl {
+    fn new(tfplan: &TfPlan) -> Mdl {
+        let unique_types = tfplan
+            .changing_resources
+            .iter()
+            .map(|resource| resource.r#type.clone())
+            .unique()
+            .sorted()
+            .collect();
         Mdl {
             staged_operations: vec![],
-            state: State::ChoosingType { selected: None },
+            state: State::ChoosingType {
+                selected: None,
+                types: unique_types,
+            },
         }
     }
 }
 
-fn select_type(model: &mut Mdl) {
-    if let State::ChoosingType { selected: Some(_) } = model.state {
+fn browse_type(model: &mut Mdl) {
+    if let State::ChoosingType {
+        selected: Some(_),
+        types: _,
+    } = model.state
+    {
         model.state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
@@ -345,6 +360,7 @@ enum TerraformAction {
 enum State {
     ChoosingType {
         selected: Option<usize>,
+        types: Vec<String>,
     },
     BrowsingResources {
         action_in_scope: TerraformAction,
@@ -362,7 +378,7 @@ impl State {
             State::ChoosingType { .. } => match key {
                 Some(Ok(Key::Char('j'))) | Some(Ok(Key::Down)) => Message::NextType,
                 Some(Ok(Key::Char('k'))) | Some(Ok(Key::Up)) => Message::PreviousType,
-                Some(Ok(Key::Char('\n'))) => Message::SelectType,
+                Some(Ok(Key::Char('\n'))) => Message::BrowseType,
                 _ => Message::DoNothing,
             },
             State::BrowsingResources { .. } => Message::DoNothing,
@@ -374,7 +390,7 @@ impl State {
 enum Message {
     PreviousType,
     NextType,
-    SelectType,
+    BrowseType,
     DoNothing,
     Quit,
 }
@@ -472,6 +488,7 @@ enum Status {
     Unstaged,
 }
 
+#[derive(Debug, PartialEq)]
 enum Operation {
     Move { from: String, to: String },
     Import { address: String, identifier: String },
@@ -778,7 +795,10 @@ mod tests {
 
     #[test]
     fn q_sends_quit_message() {
-        let state = State::ChoosingType { selected: None };
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&keypress('q'));
 
         assert_eq!(Message::Quit, message);
@@ -786,7 +806,10 @@ mod tests {
 
     #[test]
     fn when_choosing_types__j_sends_next_type_message() {
-        let state = State::ChoosingType { selected: None };
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&keypress('j'));
 
         assert_eq!(Message::NextType, message);
@@ -794,7 +817,10 @@ mod tests {
 
     #[test]
     fn when_choosing_types__down_sends_next_type_message() {
-        let state = State::ChoosingType { selected: None };
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&Some(Ok(Key::Down)));
 
         assert_eq!(Message::NextType, message);
@@ -802,7 +828,10 @@ mod tests {
 
     #[test]
     fn when_choosing_types__k_sends_previous_type_message() {
-        let state = State::ChoosingType { selected: None };
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&keypress('j'));
 
         assert_eq!(Message::NextType, message);
@@ -810,33 +839,56 @@ mod tests {
 
     #[test]
     fn when_choosing_types__up_sends_previous_type_message() {
-        let state = State::ChoosingType { selected: None };
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&Some(Ok(Key::Up)));
 
         assert_eq!(Message::PreviousType, message);
     }
 
     #[test]
-    fn when_choosing_types__return_sends_select_type_message() {
-        let state = State::ChoosingType { selected: None };
+    fn when_choosing_types__return_sends_browse_type_message() {
+        let state = State::ChoosingType {
+            selected: None,
+            types: vec!["random_pet".to_string()],
+        };
         let message = state.handle(&keypress('\n'));
 
-        assert_eq!(Message::SelectType, message);
+        assert_eq!(Message::BrowseType, message);
     }
 
     #[test]
-    fn select_type_does_nothing_when_no_type_is_selected() {
-        let mut model = Mdl::new();
-        select_type(&mut model);
+    fn browse_type_does_nothing_when_no_type_is_selected() {
+        let tfplan = TfPlan {
+            changing_resources: vec![],
+        };
+        let mut model = Mdl::new(&tfplan);
+        browse_type(&mut model);
 
-        assert_eq!(State::ChoosingType { selected: None }, model.state);
+        assert_eq!(Mdl::new(&tfplan), model);
     }
 
     #[test]
-    fn select_type_moves_state_when_type_is_selected() {
-        let mut model = Mdl::new();
-        model.state = State::ChoosingType { selected: Some(1) };
-        select_type(&mut model);
+    fn browse_type_moves_state_when_type_is_selected() {
+        let tfplan = TfPlan {
+            changing_resources: vec![ChangingResource {
+                address: "random_pet.tapu".to_string(),
+                r#type: "random_pet".to_string(),
+                change: Change {
+                    actions: vec!["create".to_string()],
+                    before: None,
+                    after: Some(json!({ "separator" : "-" })),
+                },
+            }],
+        };
+        let mut model = Mdl::new(&tfplan);
+        model.state = State::ChoosingType {
+            selected: Some(0),
+            types: vec!["random_pet".to_string()],
+        };
+        browse_type(&mut model);
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
