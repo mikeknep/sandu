@@ -71,6 +71,14 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
 
     loop {
         draw(&mut terminal, &mut model)?;
+        // match model.state.handle(&keys.next()) {
+        //     Message::Quit => {
+        //         terminal.clear()?;
+        //         break;
+        //     }
+        //     Message::DoNothing => {}
+        //     _ => {}
+        // }
         match get_msg(&keys.next()) {
             Msg::PreviousPane => {
                 model.active_pane = model.active_pane.prev();
@@ -301,6 +309,74 @@ struct Model {
     planned_creations: Vec<Resource>,
     planned_deletions: Vec<Resource>,
     staged_operations: Vec<Operation>,
+}
+
+struct Mdl {
+    staged_operations: Vec<Operation>,
+    state: State,
+}
+
+impl Mdl {
+    fn new() -> Mdl {
+        Mdl {
+            staged_operations: vec![],
+            state: State::ChoosingType { selected: None },
+        }
+    }
+}
+
+fn select_type(model: &mut Mdl) {
+    if let State::ChoosingType { selected: Some(_) } = model.state {
+        model.state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            selected_create: None,
+            selected_delete: None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum TerraformAction {
+    Create,
+    Delete,
+}
+
+#[derive(Debug, PartialEq)]
+enum State {
+    ChoosingType {
+        selected: Option<usize>,
+    },
+    BrowsingResources {
+        action_in_scope: TerraformAction,
+        selected_create: Option<usize>,
+        selected_delete: Option<usize>,
+    },
+}
+
+impl State {
+    fn handle(&self, key: &Option<Result<Key, io::Error>>) -> Message {
+        if let Some(Ok(Key::Char('q'))) = key {
+            return Message::Quit;
+        }
+        match &self {
+            State::ChoosingType { .. } => match key {
+                Some(Ok(Key::Char('j'))) | Some(Ok(Key::Down)) => Message::NextType,
+                Some(Ok(Key::Char('k'))) | Some(Ok(Key::Up)) => Message::PreviousType,
+                Some(Ok(Key::Char('\n'))) => Message::SelectType,
+                _ => Message::DoNothing,
+            },
+            State::BrowsingResources { .. } => Message::DoNothing,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Message {
+    PreviousType,
+    NextType,
+    SelectType,
+    DoNothing,
+    Quit,
 }
 
 fn cycle_next(items_length: usize, state: &mut ListState) {
@@ -694,5 +770,79 @@ mod tests {
             ],
             model.types()
         );
+    }
+
+    fn keypress(k: char) -> Option<Result<Key, io::Error>> {
+        Some(Ok(Key::Char(k)))
+    }
+
+    #[test]
+    fn q_sends_quit_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&keypress('q'));
+
+        assert_eq!(Message::Quit, message);
+    }
+
+    #[test]
+    fn when_choosing_types__j_sends_next_type_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&keypress('j'));
+
+        assert_eq!(Message::NextType, message);
+    }
+
+    #[test]
+    fn when_choosing_types__down_sends_next_type_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&Some(Ok(Key::Down)));
+
+        assert_eq!(Message::NextType, message);
+    }
+
+    #[test]
+    fn when_choosing_types__k_sends_previous_type_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&keypress('j'));
+
+        assert_eq!(Message::NextType, message);
+    }
+
+    #[test]
+    fn when_choosing_types__up_sends_previous_type_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&Some(Ok(Key::Up)));
+
+        assert_eq!(Message::PreviousType, message);
+    }
+
+    #[test]
+    fn when_choosing_types__return_sends_select_type_message() {
+        let state = State::ChoosingType { selected: None };
+        let message = state.handle(&keypress('\n'));
+
+        assert_eq!(Message::SelectType, message);
+    }
+
+    #[test]
+    fn select_type_does_nothing_when_no_type_is_selected() {
+        let mut model = Mdl::new();
+        select_type(&mut model);
+
+        assert_eq!(State::ChoosingType { selected: None }, model.state);
+    }
+
+    #[test]
+    fn select_type_moves_state_when_type_is_selected() {
+        let mut model = Mdl::new();
+        model.state = State::ChoosingType { selected: Some(1) };
+        select_type(&mut model);
+
+        let expected_state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            selected_create: None,
+            selected_delete: None,
+        };
+        assert_eq!(expected_state, model.state);
     }
 }
