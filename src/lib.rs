@@ -254,6 +254,18 @@ struct TerraformPlan {
     pending_deletion: Vec<TerraformResource>,
 }
 
+impl TerraformPlan {
+    fn unique_types(&self) -> Vec<String> {
+        self.pending_creation
+            .iter()
+            .chain(self.pending_deletion.iter())
+            .map(|resource| resource.r#type.clone())
+            .unique()
+            .sorted()
+            .collect()
+    }
+}
+
 impl From<TfPlan> for TerraformPlan {
     fn from(tfplan: TfPlan) -> Self {
         let mut pending_creation = vec![];
@@ -862,6 +874,27 @@ mod tests {
             changing_resources.push(delete);
         }
         TfPlan { changing_resources }
+    }
+
+    #[test]
+    fn terraform_plan_can_list_unique_types_in_alphabetical_order() {
+        let terraform_plan = TerraformPlan {
+            pending_creation: vec![TerraformResource {
+                address: "example.create".to_string(),
+                r#type: "two".to_string(),
+                preview: json!({}),
+            }],
+            pending_deletion: vec![TerraformResource {
+                address: "example.delete".to_string(),
+                r#type: "one".to_string(),
+                preview: json!({}),
+            }],
+        };
+
+        assert_eq!(
+            vec!["one".to_string(), "two".to_string()],
+            terraform_plan.unique_types()
+        );
     }
 
     #[test]
