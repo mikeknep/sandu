@@ -241,6 +241,54 @@ struct Change {
     before: Option<serde_json::Value>,
 }
 
+#[derive(Debug, PartialEq)]
+struct TerraformResource {
+    address: String,
+    preview: serde_json::Value,
+    r#type: String,
+}
+
+#[derive(Debug, PartialEq)]
+struct TerraformPlan {
+    pending_creation: Vec<TerraformResource>,
+    pending_deletion: Vec<TerraformResource>,
+}
+
+impl From<TfPlan> for TerraformPlan {
+    fn from(tfplan: TfPlan) -> Self {
+        let mut pending_creation = vec![];
+        let mut pending_deletion = vec![];
+
+        for changing_resource in tfplan.changing_resources {
+            match (
+                changing_resource.change.before,
+                changing_resource.change.after,
+            ) {
+                (Some(before), None) => {
+                    pending_deletion.push(TerraformResource {
+                        address: changing_resource.address.clone(),
+                        r#type: changing_resource.r#type.clone(),
+                        preview: before,
+                    });
+                }
+                (None, Some(after)) => {
+                    pending_creation.push(TerraformResource {
+                        address: changing_resource.address.clone(),
+                        r#type: changing_resource.r#type.clone(),
+                        preview: after,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        TerraformPlan {
+            pending_creation,
+            pending_deletion,
+        }
+    }
+}
+
 pub trait Terraform {
     fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>>;
 }
@@ -737,6 +785,56 @@ mod tests {
             ],
             model.types()
         );
+    }
+
+    #[test]
+    fn create_terraform_plan_from_parsed_tfplan() {
+        let tfplan = TfPlan {
+            changing_resources: vec![
+                ChangingResource {
+                    address: "example.pending_creation".to_string(),
+                    r#type: "example".to_string(),
+                    change: Change {
+                        actions: vec!["create".to_string()],
+                        before: None,
+                        after: Some(json!({ "example": "pending_creation" })),
+                    },
+                },
+                ChangingResource {
+                    address: "example.pending_deletion".to_string(),
+                    r#type: "example".to_string(),
+                    change: Change {
+                        actions: vec!["delete".to_string()],
+                        before: Some(json!({ "example": "pending_deletion" })),
+                        after: None,
+                    },
+                },
+                ChangingResource {
+                    address: "example.create_and_delete".to_string(),
+                    r#type: "example".to_string(),
+                    change: Change {
+                        actions: vec!["create".to_string(), "delete".to_string()],
+                        before: Some(json!({ "example": "create_and_delete" })),
+                        after: Some(json!({ "example": "create_and_delete" })),
+                    },
+                },
+            ],
+        };
+
+        let expected_terraform_plan = TerraformPlan {
+            pending_creation: vec![TerraformResource {
+                address: "example.pending_creation".to_string(),
+                r#type: "example".to_string(),
+                preview: json!({ "example": "pending_creation" }),
+            }],
+            pending_deletion: vec![TerraformResource {
+                address: "example.pending_deletion".to_string(),
+                r#type: "example".to_string(),
+                preview: json!({ "example": "pending_deletion" }),
+            }],
+        };
+
+        assert_eq!(expected_terraform_plan, tfplan.into());
     }
 
     fn simple_tfplan(number_of_types: u32) -> TfPlan {
