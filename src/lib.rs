@@ -294,6 +294,7 @@ enum State {
     },
     BrowsingResources {
         action_in_scope: TerraformAction,
+        r#type: String,
         selected_create: Option<usize>,
         selected_delete: Option<usize>,
     },
@@ -319,9 +320,10 @@ impl State {
                     })
                 }
                 Some(Ok(Key::Char('\n'))) => {
-                    if selected.is_some() {
+                    if let Some(i) = selected {
                         Some(State::BrowsingResources {
                             action_in_scope: TerraformAction::Delete,
+                            r#type: tfplan.unique_types()[*i].clone(),
                             selected_create: None,
                             selected_delete: None,
                         })
@@ -337,21 +339,25 @@ impl State {
             },
             State::BrowsingResources {
                 action_in_scope,
+                r#type,
                 selected_create,
                 selected_delete,
             } => match key {
                 Some(Ok(Key::Char('h'))) | Some(Ok(Key::Left)) => Some(State::BrowsingResources {
                     action_in_scope: TerraformAction::Delete,
+                    r#type: r#type.clone(),
                     selected_create: *selected_create,
                     selected_delete: *selected_delete,
                 }),
                 Some(Ok(Key::Char('l'))) | Some(Ok(Key::Right)) => Some(State::BrowsingResources {
                     action_in_scope: TerraformAction::Create,
+                    r#type: r#type.clone(),
                     selected_create: *selected_create,
                     selected_delete: *selected_delete,
                 }),
                 _ => Some(State::BrowsingResources {
                     action_in_scope: action_in_scope.clone(),
+                    r#type: r#type.clone(),
                     selected_create: *selected_create,
                     selected_delete: *selected_delete,
                 }),
@@ -837,11 +843,13 @@ mod tests {
 
     #[test]
     fn browsing_type_moves_state_when_type_is_selected() {
+        let tfplan = &simple_tfplan(1);
         let state = State::ChoosingType { selected: Some(0) };
 
-        let new_state = state.handle(&simple_tfplan(1), &keypress('\n'));
+        let new_state = state.handle(&tfplan, &keypress('\n'));
 
         let expected_state = State::BrowsingResources {
+            r#type: tfplan.unique_types()[0].clone(),
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
             selected_delete: None,
@@ -855,6 +863,7 @@ mod tests {
         let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
@@ -863,6 +872,7 @@ mod tests {
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
@@ -872,6 +882,7 @@ mod tests {
         // another left press at this point has no effect
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
@@ -888,6 +899,7 @@ mod tests {
         let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
@@ -896,6 +908,7 @@ mod tests {
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
@@ -905,6 +918,7 @@ mod tests {
         // another right press at this point has no effect
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
             selected_create: None,
             selected_delete: None,
         };
