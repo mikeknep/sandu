@@ -271,16 +271,6 @@ impl Mdl {
     }
 }
 
-fn browse_type(model: &mut Mdl) {
-    if let State::ChoosingType { selected: Some(_) } = model.state {
-        model.state = State::BrowsingResources {
-            action_in_scope: TerraformAction::Delete,
-            selected_create: None,
-            selected_delete: None,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 enum TerraformAction {
     Create,
@@ -575,26 +565,6 @@ impl Pane {
             .title(vec![Span::from(text)])
             .border_style(Style::default().fg(border_color))
             .borders(Borders::ALL)
-    }
-
-    fn next(&self) -> Pane {
-        match *self {
-            Pane::TypesList => Pane::DestroyingList,
-            Pane::DestroyingList => Pane::CreatingList,
-            Pane::CreatingList => Pane::StagedOperations,
-            Pane::StagedOperations => Pane::TypesList,
-            _ => panic!("No other panes can ever be active!"),
-        }
-    }
-
-    fn prev(&self) -> Pane {
-        match *self {
-            Pane::TypesList => Pane::StagedOperations,
-            Pane::DestroyingList => Pane::TypesList,
-            Pane::CreatingList => Pane::DestroyingList,
-            Pane::StagedOperations => Pane::CreatingList,
-            _ => panic!("No other panes can ever be active!"),
-        }
     }
 }
 
