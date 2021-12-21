@@ -284,7 +284,7 @@ fn browse_type(model: &mut Mdl) {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum TerraformAction {
     Create,
     Delete,
@@ -343,7 +343,27 @@ impl State {
                     types: types.clone(),
                 }),
             },
-            State::BrowsingResources { .. } => None,
+            State::BrowsingResources {
+                action_in_scope,
+                selected_create,
+                selected_delete,
+            } => match key {
+                Some(Ok(Key::Char('h'))) | Some(Ok(Key::Left)) => Some(State::BrowsingResources {
+                    action_in_scope: TerraformAction::Delete,
+                    selected_create: *selected_create,
+                    selected_delete: *selected_delete,
+                }),
+                Some(Ok(Key::Char('l'))) | Some(Ok(Key::Right)) => Some(State::BrowsingResources {
+                    action_in_scope: TerraformAction::Create,
+                    selected_create: *selected_create,
+                    selected_delete: *selected_delete,
+                }),
+                _ => Some(State::BrowsingResources {
+                    action_in_scope: action_in_scope.clone(),
+                    selected_create: *selected_create,
+                    selected_delete: *selected_delete,
+                }),
+            },
         }
     }
 }
@@ -890,5 +910,65 @@ mod tests {
         };
 
         assert_eq!(Some(expected_state), new_state);
+    }
+
+    #[test]
+    fn when_browsing_resources__left_puts_delete_action_in_scope() {
+        let state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            selected_create: None,
+            selected_delete: None,
+        };
+
+        let first_press_left = state.handle(&keypress('h'));
+
+        let expected_state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            selected_create: None,
+            selected_delete: None,
+        };
+
+        assert_eq!(Some(expected_state), first_press_left);
+
+        // another left press at this point has no effect
+        let expected_state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            selected_create: None,
+            selected_delete: None,
+        };
+        assert_eq!(
+            Some(expected_state),
+            first_press_left.unwrap().handle(&Some(Ok(Key::Left)))
+        );
+    }
+
+    #[test]
+    fn when_browsing_resources__right_puts_create_action_in_scope() {
+        let state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            selected_create: None,
+            selected_delete: None,
+        };
+
+        let first_press_right = state.handle(&keypress('l'));
+
+        let expected_state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            selected_create: None,
+            selected_delete: None,
+        };
+
+        assert_eq!(Some(expected_state), first_press_right);
+
+        // another right press at this point has no effect
+        let expected_state = State::BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            selected_create: None,
+            selected_delete: None,
+        };
+        assert_eq!(
+            Some(expected_state),
+            first_press_right.unwrap().handle(&Some(Ok(Key::Right)))
+        );
     }
 }
