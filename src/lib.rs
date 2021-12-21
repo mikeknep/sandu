@@ -829,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn when_browsing_resources__left_puts_delete_action_in_scope() {
+    fn when_browsing_resources_left_puts_delete_action_in_scope() {
         let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn when_browsing_resources__right_puts_create_action_in_scope() {
+    fn when_browsing_resources_right_puts_create_action_in_scope() {
         let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
