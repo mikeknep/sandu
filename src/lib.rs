@@ -61,7 +61,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
     let tfplan = serde_json::from_slice::<TfPlan>(&json_bytes)?;
 
-    let mut mdl = Mdl::new(&tfplan);
+    let mut mdl = Mdl::new();
     let mut model = Model::init(&tfplan);
 
     let stdout = io::stdout().into_raw_mode()?;
@@ -72,7 +72,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
 
     loop {
         draw(&mut terminal, &mut model)?;
-        if let Some(new_state) = mdl.state.handle(&keys.next()) {
+        if let Some(new_state) = mdl.state.handle(&tfplan, &keys.next()) {
             mdl.state = new_state;
         } else {
             break;
@@ -213,6 +213,17 @@ struct TfPlan {
     changing_resources: Vec<ChangingResource>,
 }
 
+impl TfPlan {
+    fn unique_types(&self) -> Vec<String> {
+        self.changing_resources
+            .iter()
+            .map(|resource| resource.r#type.clone())
+            .unique()
+            .sorted()
+            .collect()
+    }
+}
+
 #[derive(Deserialize)]
 struct ChangingResource {
     address: String,
@@ -252,30 +263,16 @@ struct Mdl {
 }
 
 impl Mdl {
-    fn new(tfplan: &TfPlan) -> Mdl {
-        let unique_types = tfplan
-            .changing_resources
-            .iter()
-            .map(|resource| resource.r#type.clone())
-            .unique()
-            .sorted()
-            .collect();
+    fn new() -> Self {
         Mdl {
             staged_operations: vec![],
-            state: State::ChoosingType {
-                selected: None,
-                types: unique_types,
-            },
+            state: State::ChoosingType { selected: None },
         }
     }
 }
 
 fn browse_type(model: &mut Mdl) {
-    if let State::ChoosingType {
-        selected: Some(_),
-        types: _,
-    } = model.state
-    {
+    if let State::ChoosingType { selected: Some(_) } = model.state {
         model.state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
@@ -294,7 +291,6 @@ enum TerraformAction {
 enum State {
     ChoosingType {
         selected: Option<usize>,
-        types: Vec<String>,
     },
     BrowsingResources {
         action_in_scope: TerraformAction,
@@ -304,24 +300,22 @@ enum State {
 }
 
 impl State {
-    fn handle(&self, key: &Option<Result<Key, io::Error>>) -> Option<State> {
+    fn handle(&self, tfplan: &TfPlan, key: &Option<Result<Key, io::Error>>) -> Option<State> {
         if let Some(Ok(Key::Char('q'))) = key {
             return None;
         }
         match &self {
-            State::ChoosingType { selected, types } => match key {
+            State::ChoosingType { selected } => match key {
                 Some(Ok(Key::Char('j'))) | Some(Ok(Key::Down)) => {
-                    let next_index = cycle_next(types.len(), selected);
+                    let next_index = cycle_next(tfplan.unique_types().len(), selected);
                     Some(State::ChoosingType {
                         selected: Some(next_index),
-                        types: types.clone(),
                     })
                 }
                 Some(Ok(Key::Char('k'))) | Some(Ok(Key::Up)) => {
-                    let previous_index = cycle_previous(types.len(), selected);
+                    let previous_index = cycle_previous(tfplan.unique_types().len(), selected);
                     Some(State::ChoosingType {
                         selected: Some(previous_index),
-                        types: types.clone(),
                     })
                 }
                 Some(Ok(Key::Char('\n'))) => {
@@ -334,13 +328,11 @@ impl State {
                     } else {
                         Some(State::ChoosingType {
                             selected: *selected,
-                            types: types.clone(),
                         })
                     }
                 }
                 _ => Some(State::ChoosingType {
                     selected: *selected,
-                    types: types.clone(),
                 }),
             },
             State::BrowsingResources {
@@ -755,153 +747,99 @@ mod tests {
         Some(Ok(Key::Char(k)))
     }
 
+    fn simple_tfplan(number_of_types: u32) -> TfPlan {
+        let mut changing_resources = vec![];
+        for i in 0..number_of_types {
+            let create = ChangingResource {
+                address: format!("{}.{}", i.to_string(), i.to_string()),
+                r#type: i.to_string(),
+                change: Change {
+                    actions: vec!["create".to_string()],
+                    before: None,
+                    after: Some(json!({ "foo": i })),
+                },
+            };
+            let delete = ChangingResource {
+                address: format!("{}.{}", i.to_string(), i.to_string()),
+                r#type: i.to_string(),
+                change: Change {
+                    actions: vec!["delete".to_string()],
+                    before: Some(json!({ "foo": i })),
+                    after: None,
+                },
+            };
+            changing_resources.push(create);
+            changing_resources.push(delete);
+        }
+        TfPlan { changing_resources }
+    }
+
     #[test]
     fn q_returns_empty_state() {
-        let state = State::ChoosingType {
-            selected: None,
-            types: vec!["random_pet".to_string()],
-        };
-        let new_state = state.handle(&keypress('q'));
+        let state = State::ChoosingType { selected: None };
+        let new_state = state.handle(&simple_tfplan(1), &keypress('q'));
 
         assert!(new_state.is_none());
     }
 
     #[test]
     fn scroll_forwards_through_types() {
-        let all_types = vec![
-            "random_password".to_string(),
-            "random_pet".to_string(),
-            "random_string".to_string(),
-        ];
-        let state = State::ChoosingType {
-            selected: None,
-            types: all_types.clone(),
-        };
+        let tfplan = simple_tfplan(3);
+        let state = State::ChoosingType { selected: None };
 
-        let next_0 = state.handle(&keypress('j'));
+        let next_0 = state.handle(&tfplan, &keypress('j'));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(0),
-                types: all_types.clone()
-            }),
-            next_0
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(0) }), next_0);
 
-        let next_1 = next_0.unwrap().handle(&keypress('j'));
+        let next_1 = next_0.unwrap().handle(&tfplan, &keypress('j'));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(1),
-                types: all_types.clone()
-            }),
-            next_1
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(1) }), next_1);
 
-        let next_2 = next_1.unwrap().handle(&Some(Ok(Key::Down)));
+        let next_2 = next_1.unwrap().handle(&tfplan, &Some(Ok(Key::Down)));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(2),
-                types: all_types.clone()
-            }),
-            next_2
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(2) }), next_2);
 
-        let next_reset = next_2.unwrap().handle(&Some(Ok(Key::Down)));
+        let next_reset = next_2.unwrap().handle(&tfplan, &Some(Ok(Key::Down)));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(0),
-                types: all_types.clone()
-            }),
-            next_reset
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(0) }), next_reset);
     }
 
     #[test]
     fn scroll_backwards_through_types() {
-        let all_types = vec![
-            "random_password".to_string(),
-            "random_pet".to_string(),
-            "random_string".to_string(),
-        ];
-        let state = State::ChoosingType {
-            selected: None,
-            types: all_types.clone(),
-        };
+        let tfplan = simple_tfplan(3);
+        let state = State::ChoosingType { selected: None };
 
-        let prev_2 = state.handle(&keypress('k'));
+        let prev_2 = state.handle(&tfplan, &keypress('k'));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(2),
-                types: all_types.clone()
-            }),
-            prev_2
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(2) }), prev_2);
 
-        let prev_1 = prev_2.unwrap().handle(&keypress('k'));
+        let prev_1 = prev_2.unwrap().handle(&tfplan, &keypress('k'));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(1),
-                types: all_types.clone()
-            }),
-            prev_1
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(1) }), prev_1);
 
-        let prev_0 = prev_1.unwrap().handle(&Some(Ok(Key::Up)));
+        let prev_0 = prev_1.unwrap().handle(&tfplan, &Some(Ok(Key::Up)));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(0),
-                types: all_types.clone()
-            }),
-            prev_0
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(0) }), prev_0);
 
-        let prev_reset = prev_0.unwrap().handle(&Some(Ok(Key::Up)));
+        let prev_reset = prev_0.unwrap().handle(&tfplan, &Some(Ok(Key::Up)));
 
-        assert_eq!(
-            Some(State::ChoosingType {
-                selected: Some(2),
-                types: all_types.clone()
-            }),
-            prev_reset
-        );
+        assert_eq!(Some(State::ChoosingType { selected: Some(2) }), prev_reset);
     }
 
     #[test]
     fn attempting_to_browse_type_no_type_is_selected_returns_identical_state() {
-        let all_types = vec![
-            "random_password".to_string(),
-            "random_pet".to_string(),
-            "random_string".to_string(),
-        ];
-        let state = State::ChoosingType {
-            selected: None,
-            types: all_types.clone(),
-        };
+        let state = State::ChoosingType { selected: None };
 
-        let new_state = state.handle(&keypress('\n'));
+        let new_state = state.handle(&simple_tfplan(1), &keypress('\n'));
 
         assert_eq!(Some(state), new_state);
     }
 
     #[test]
     fn browsing_type_moves_state_when_type_is_selected() {
-        let all_types = vec![
-            "random_password".to_string(),
-            "random_pet".to_string(),
-            "random_string".to_string(),
-        ];
-        let state = State::ChoosingType {
-            selected: Some(0),
-            types: all_types.clone(),
-        };
+        let state = State::ChoosingType { selected: Some(0) };
 
-        let new_state = state.handle(&keypress('\n'));
+        let new_state = state.handle(&simple_tfplan(1), &keypress('\n'));
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
@@ -914,13 +852,14 @@ mod tests {
 
     #[test]
     fn when_browsing_resources__left_puts_delete_action_in_scope() {
+        let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
             selected_create: None,
             selected_delete: None,
         };
 
-        let first_press_left = state.handle(&keypress('h'));
+        let first_press_left = state.handle(&tfplan, &keypress('h'));
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
@@ -938,19 +877,22 @@ mod tests {
         };
         assert_eq!(
             Some(expected_state),
-            first_press_left.unwrap().handle(&Some(Ok(Key::Left)))
+            first_press_left
+                .unwrap()
+                .handle(&tfplan, &Some(Ok(Key::Left)))
         );
     }
 
     #[test]
     fn when_browsing_resources__right_puts_create_action_in_scope() {
+        let tfplan = simple_tfplan(1);
         let state = State::BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
             selected_delete: None,
         };
 
-        let first_press_right = state.handle(&keypress('l'));
+        let first_press_right = state.handle(&tfplan, &keypress('l'));
 
         let expected_state = State::BrowsingResources {
             action_in_scope: TerraformAction::Create,
@@ -968,7 +910,9 @@ mod tests {
         };
         assert_eq!(
             Some(expected_state),
-            first_press_right.unwrap().handle(&Some(Ok(Key::Right)))
+            first_press_right
+                .unwrap()
+                .handle(&tfplan, &Some(Ok(Key::Right)))
         );
     }
 }
