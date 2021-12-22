@@ -263,14 +263,10 @@ fn handle_keypress_while_choosing_type(
                     selected_delete: None,
                 }))
             } else {
-                Some(State::ChoosingType(ChoosingType {
-                    selected: state.selected,
-                }))
+                Some(State::ChoosingType(state))
             }
         }
-        _ => Some(State::ChoosingType(ChoosingType {
-            selected: state.selected,
-        })),
+        _ => Some(State::ChoosingType(state)),
     }
 }
 
@@ -282,15 +278,11 @@ fn handle_keypress_while_browsing_resources(
     match key {
         Key::Char('h') | Key::Left => Some(State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Delete,
-            r#type: state.r#type.clone(),
-            selected_create: state.selected_create,
-            selected_delete: state.selected_delete,
+            ..state
         })),
         Key::Char('l') | Key::Right => Some(State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Create,
-            r#type: state.r#type.clone(),
-            selected_create: state.selected_create,
-            selected_delete: state.selected_delete,
+            ..state
         })),
         Key::Char('j') | Key::Down => {
             let (selected_create, selected_delete) = match state.action_in_scope {
@@ -310,10 +302,9 @@ fn handle_keypress_while_browsing_resources(
                 }
             };
             Some(State::BrowsingResources(BrowsingResources {
-                action_in_scope: state.action_in_scope.clone(),
-                r#type: state.r#type,
                 selected_create,
                 selected_delete,
+                ..state
             }))
         }
         Key::Char('k') | Key::Up => {
@@ -334,18 +325,12 @@ fn handle_keypress_while_browsing_resources(
                 }
             };
             Some(State::BrowsingResources(BrowsingResources {
-                action_in_scope: state.action_in_scope.clone(),
-                r#type: state.r#type,
                 selected_create,
                 selected_delete,
+                ..state
             }))
         }
-        _ => Some(State::BrowsingResources(BrowsingResources {
-            action_in_scope: state.action_in_scope.clone(),
-            r#type: state.r#type,
-            selected_create: state.selected_create,
-            selected_delete: state.selected_delete,
-        })),
+        _ => Some(State::BrowsingResources(state)),
     }
 }
 
