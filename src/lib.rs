@@ -205,12 +205,12 @@ enum TerraformAction {
     Delete,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct ChoosingType {
     selected: Option<usize>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct BrowsingResources {
     action_in_scope: TerraformAction,
     r#type: String,
@@ -218,10 +218,18 @@ struct BrowsingResources {
     selected_delete: Option<usize>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+struct ConfirmMove {
+    r#type: String,
+    delete_address: String,
+    create_address: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 enum State {
     ChoosingType(ChoosingType),
     BrowsingResources(BrowsingResources),
+    ConfirmMove(ConfirmMove),
 }
 
 fn handle_keypress(plan: &TerraformPlan, state: State, key: Key) -> Option<State> {
@@ -233,6 +241,7 @@ fn handle_keypress(plan: &TerraformPlan, state: State, key: Key) -> Option<State
         State::BrowsingResources(current) => {
             handle_keypress_while_browsing_resources(plan, current, key)
         }
+        _ => None,
     }
 }
 
@@ -329,6 +338,23 @@ fn handle_keypress_while_browsing_resources(
                 selected_delete,
                 ..state
             }))
+        }
+        Key::Char('m') => {
+            if let (Some(c), Some(d)) = (state.selected_create, state.selected_delete) {
+                let create_address = resources_of_type(&state.r#type, &plan.pending_creation)[c]
+                    .address
+                    .clone();
+                let delete_address = resources_of_type(&state.r#type, &plan.pending_deletion)[d]
+                    .address
+                    .clone();
+                Some(State::ConfirmMove(ConfirmMove {
+                    r#type: state.r#type,
+                    create_address,
+                    delete_address,
+                }))
+            } else {
+                Some(State::BrowsingResources(state))
+            }
         }
         _ => Some(State::BrowsingResources(state)),
     }
@@ -754,5 +780,61 @@ mod tests {
     fn cannot_cycle_into_an_empty_list() {
         assert!(cycle_next(0, &None).is_none());
         assert!(cycle_previous(0, &None).is_none());
+    }
+
+    #[test]
+    fn proposing_a_state_move_operation_requires_selected_create_and_delete() {
+        let plan = simple_plan(1);
+        let blank_browsing_resources_state = BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: None,
+        };
+        let nothing_selected = State::BrowsingResources(blank_browsing_resources_state.clone());
+        let only_delete_selected = State::BrowsingResources(BrowsingResources {
+            selected_delete: Some(0),
+            ..blank_browsing_resources_state.clone()
+        });
+        let only_create_selected = State::BrowsingResources(BrowsingResources {
+            selected_create: Some(0),
+            ..blank_browsing_resources_state.clone()
+        });
+
+        assert_eq!(
+            Some(nothing_selected.clone()),
+            handle_keypress(&plan, nothing_selected, Key::Char('m'))
+        );
+
+        assert_eq!(
+            Some(only_delete_selected.clone()),
+            handle_keypress(&plan, only_delete_selected, Key::Char('m'))
+        );
+
+        assert_eq!(
+            Some(only_create_selected.clone()),
+            handle_keypress(&plan, only_create_selected, Key::Char('m'))
+        );
+    }
+
+    #[test]
+    fn propose_a_state_move_operation() {
+        let plan = simple_plan(1);
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: Some(0),
+        });
+
+        let confirm_move_state = handle_keypress(&plan, state, Key::Char('m'));
+
+        let expected_state = State::ConfirmMove(ConfirmMove {
+            r#type: "0".to_string(),
+            delete_address: "0.0".to_string(),
+            create_address: "0.0".to_string(),
+        });
+
+        assert_eq!(Some(expected_state), confirm_move_state);
     }
 }
