@@ -245,13 +245,13 @@ fn handle_keypress_while_choosing_type(
         Key::Char('j') | Key::Down => {
             let next_index = cycle_next(plan.unique_types().len(), &state.selected);
             Some(State::ChoosingType(ChoosingType {
-                selected: Some(next_index),
+                selected: next_index,
             }))
         }
         Key::Char('k') | Key::Up => {
             let previous_index = cycle_previous(plan.unique_types().len(), &state.selected);
             Some(State::ChoosingType(ChoosingType {
-                selected: Some(previous_index),
+                selected: previous_index,
             }))
         }
         Key::Char('\n') => {
@@ -291,14 +291,14 @@ fn handle_keypress_while_browsing_resources(
                         resources_of_type(&state.r#type, &plan.pending_creation).len(),
                         &state.selected_create,
                     );
-                    (Some(newly_selected_create), state.selected_delete)
+                    (newly_selected_create, state.selected_delete)
                 }
                 TerraformAction::Delete => {
                     let newly_selected_delete = cycle_next(
                         resources_of_type(&state.r#type, &plan.pending_deletion).len(),
                         &state.selected_delete,
                     );
-                    (state.selected_create, Some(newly_selected_delete))
+                    (state.selected_create, newly_selected_delete)
                 }
             };
             Some(State::BrowsingResources(BrowsingResources {
@@ -314,14 +314,14 @@ fn handle_keypress_while_browsing_resources(
                         resources_of_type(&state.r#type, &plan.pending_creation).len(),
                         &state.selected_create,
                     );
-                    (Some(newly_selected_create), state.selected_delete)
+                    (newly_selected_create, state.selected_delete)
                 }
                 TerraformAction::Delete => {
                     let newly_selected_delete = cycle_previous(
                         resources_of_type(&state.r#type, &plan.pending_deletion).len(),
                         &state.selected_delete,
                     );
-                    (state.selected_create, Some(newly_selected_delete))
+                    (state.selected_create, newly_selected_delete)
                 }
             };
             Some(State::BrowsingResources(BrowsingResources {
@@ -334,29 +334,35 @@ fn handle_keypress_while_browsing_resources(
     }
 }
 
-fn cycle_next(items_length: usize, selected: &Option<usize>) -> usize {
+fn cycle_next(items_length: usize, selected: &Option<usize>) -> Option<usize> {
+    if items_length == 0 {
+        return None;
+    }
     match selected {
         Some(i) => {
             if *i >= items_length - 1 {
-                0
+                Some(0)
             } else {
-                i + 1
+                Some(i + 1)
             }
         }
-        None => 0,
+        None => Some(0),
     }
 }
 
-fn cycle_previous(items_length: usize, selected: &Option<usize>) -> usize {
+fn cycle_previous(items_length: usize, selected: &Option<usize>) -> Option<usize> {
+    if items_length == 0 {
+        return None;
+    }
     match selected {
         Some(i) => {
             if *i == 0 {
-                items_length - 1
+                Some(items_length - 1)
             } else {
-                i - 1
+                Some(i - 1)
             }
         }
-        None => items_length - 1,
+        None => Some(items_length - 1),
     }
 }
 
@@ -744,5 +750,9 @@ mod tests {
         assert_eq!(Some(expected_state), second_press_up);
     }
 
-    // TODO: if list is empty, do not advance into it
+    #[test]
+    fn cannot_cycle_into_an_empty_list() {
+        assert!(cycle_next(0, &None).is_none());
+        assert!(cycle_previous(0, &None).is_none());
+    }
 }
