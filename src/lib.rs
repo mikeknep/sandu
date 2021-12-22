@@ -199,12 +199,18 @@ impl Model {
         }
     }
 
-    fn accept(&mut self, new_state: State, _effect: Effect) {
+    fn accept(&mut self, new_state: State, effect: Effect) {
         self.state = new_state;
+        match effect {
+            Effect::StageOperation(operation) => self.staged_operations.push(operation),
+            Effect::NoOp => {}
+        }
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum Effect {
+    StageOperation(Operation),
     NoOp,
 }
 
@@ -376,11 +382,18 @@ fn handle_keypress_while_confirming_move(
     state: &ConfirmMove,
     key: Key,
 ) -> (Option<State>, Effect) {
-    let new_state = match key {
-        Key::Backspace => Some(*state.previous_state.clone()),
-        _ => None,
-    };
-    (new_state, Effect::NoOp)
+    match key {
+        Key::Backspace => (Some(*state.previous_state.clone()), Effect::NoOp),
+        Key::Char('\n') => {
+            let operation = Operation::Move {
+                from: state.delete_address.clone(),
+                to: state.create_address.clone(),
+            };
+            let new_state = None;
+            (new_state, Effect::StageOperation(operation))
+        }
+        _ => todo!(),
+    }
 }
 
 fn cycle_next(items_length: usize, selected: &Option<usize>) -> Option<usize> {
@@ -904,5 +917,53 @@ mod tests {
         let (abort_move_state, _) = handle_keypress(&plan, &state, Key::Backspace);
 
         assert_eq!(Some(browsing_state), abort_move_state);
+    }
+
+    #[test]
+    fn confirming_a_state_move_sends_a_stage_operation_effect_with_a_move() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: Some(0),
+        });
+        let state = State::ConfirmMove(ConfirmMove {
+            delete_address: "from".to_string(),
+            create_address: "to".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let (_, effect) = handle_keypress(&plan, &state, Key::Char('\n'));
+
+        assert_eq!(
+            Effect::StageOperation(Operation::Move {
+                from: "from".to_string(),
+                to: "to".to_string()
+            }),
+            effect
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn confirming_a_state_move_progresses_to_the_next_state() {
+        todo!("Not sure where we'll go from here just yet!");
+    }
+
+    #[test]
+    fn accepting_a_stage_operation_effect_adds_the_operation_to_the_model() {
+        let mut model = Model::new();
+        let new_state = State::ChoosingType(ChoosingType { selected: None });
+        let operation = Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        };
+        let stage_operation_effect = Effect::StageOperation(operation.clone());
+
+        model.accept(new_state, stage_operation_effect);
+
+        assert_eq!(1, model.staged_operations.len());
+        assert_eq!(operation, model.staged_operations[0]);
     }
 }
