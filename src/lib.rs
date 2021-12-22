@@ -220,9 +220,9 @@ struct BrowsingResources {
 
 #[derive(Clone, Debug, PartialEq)]
 struct ConfirmMove {
-    r#type: String,
     delete_address: String,
     create_address: String,
+    previous_state: Box<State>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -241,7 +241,7 @@ fn handle_keypress(plan: &TerraformPlan, state: State, key: Key) -> Option<State
         State::BrowsingResources(current) => {
             handle_keypress_while_browsing_resources(plan, current, key)
         }
-        _ => None,
+        State::ConfirmMove(current) => handle_keypress_while_confirming_move(plan, current, key),
     }
 }
 
@@ -348,7 +348,7 @@ fn handle_keypress_while_browsing_resources(
                     .address
                     .clone();
                 Some(State::ConfirmMove(ConfirmMove {
-                    r#type: state.r#type,
+                    previous_state: Box::new(State::BrowsingResources(state)),
                     create_address,
                     delete_address,
                 }))
@@ -357,6 +357,17 @@ fn handle_keypress_while_browsing_resources(
             }
         }
         _ => Some(State::BrowsingResources(state)),
+    }
+}
+
+fn handle_keypress_while_confirming_move(
+    _plan: &TerraformPlan,
+    state: ConfirmMove,
+    key: Key,
+) -> Option<State> {
+    match key {
+        Key::Backspace => Some(*state.previous_state),
+        _ => None,
     }
 }
 
@@ -827,14 +838,35 @@ mod tests {
             selected_delete: Some(0),
         });
 
-        let confirm_move_state = handle_keypress(&plan, state, Key::Char('m'));
-
         let expected_state = State::ConfirmMove(ConfirmMove {
-            r#type: "0".to_string(),
             delete_address: "0.0".to_string(),
             create_address: "0.0".to_string(),
+            previous_state: Box::new(state.clone()),
         });
 
+        let confirm_move_state = handle_keypress(&plan, state, Key::Char('m'));
+
         assert_eq!(Some(expected_state), confirm_move_state);
+    }
+
+    #[test]
+    fn aborting_a_state_move_operation_returns_to_previous_state() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: Some(0),
+        });
+
+        let state = State::ConfirmMove(ConfirmMove {
+            delete_address: "0.0".to_string(),
+            create_address: "0.0".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let abort_move_state = handle_keypress(&plan, state, Key::Backspace);
+
+        assert_eq!(Some(browsing_state), abort_move_state);
     }
 }
