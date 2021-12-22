@@ -108,7 +108,7 @@ struct Change {
     before: Option<serde_json::Value>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct TerraformResource {
     address: String,
     preview: serde_json::Value,
@@ -166,6 +166,14 @@ impl From<TfPlan> for TerraformPlan {
             pending_deletion,
         }
     }
+}
+
+fn resources_of_type(t: &str, resources: &[TerraformResource]) -> Vec<TerraformResource> {
+    resources
+        .iter()
+        .filter(|resource| resource.r#type == t)
+        .cloned()
+        .collect()
 }
 
 pub trait Terraform {
@@ -284,9 +292,57 @@ fn handle_keypress_while_browsing_resources(
             selected_create: state.selected_create,
             selected_delete: state.selected_delete,
         })),
+        Key::Char('j') | Key::Down => {
+            let (selected_create, selected_delete) = match state.action_in_scope {
+                TerraformAction::Create => {
+                    let newly_selected_create = cycle_next(
+                        resources_of_type(&state.r#type, &plan.pending_creation).len(),
+                        &state.selected_create,
+                    );
+                    (Some(newly_selected_create), state.selected_delete)
+                }
+                TerraformAction::Delete => {
+                    let newly_selected_delete = cycle_next(
+                        resources_of_type(&state.r#type, &plan.pending_deletion).len(),
+                        &state.selected_delete,
+                    );
+                    (state.selected_create, Some(newly_selected_delete))
+                }
+            };
+            Some(State::BrowsingResources(BrowsingResources {
+                action_in_scope: state.action_in_scope.clone(),
+                r#type: state.r#type,
+                selected_create,
+                selected_delete,
+            }))
+        }
+        Key::Char('k') | Key::Up => {
+            let (selected_create, selected_delete) = match state.action_in_scope {
+                TerraformAction::Create => {
+                    let newly_selected_create = cycle_previous(
+                        resources_of_type(&state.r#type, &plan.pending_creation).len(),
+                        &state.selected_create,
+                    );
+                    (Some(newly_selected_create), state.selected_delete)
+                }
+                TerraformAction::Delete => {
+                    let newly_selected_delete = cycle_previous(
+                        resources_of_type(&state.r#type, &plan.pending_deletion).len(),
+                        &state.selected_delete,
+                    );
+                    (state.selected_create, Some(newly_selected_delete))
+                }
+            };
+            Some(State::BrowsingResources(BrowsingResources {
+                action_in_scope: state.action_in_scope.clone(),
+                r#type: state.r#type,
+                selected_create,
+                selected_delete,
+            }))
+        }
         _ => Some(State::BrowsingResources(BrowsingResources {
             action_in_scope: state.action_in_scope.clone(),
-            r#type: state.r#type.clone(),
+            r#type: state.r#type,
             selected_create: state.selected_create,
             selected_delete: state.selected_delete,
         })),
@@ -624,4 +680,84 @@ mod tests {
             handle_keypress(&plan, first_press_right.unwrap(), Key::Right)
         );
     }
+
+    #[test]
+    fn when_browsing_resources_down_scrolls_foward_jn_list_of_resources_for_action_in_scope() {
+        let mut plan = simple_plan(1);
+        plan.pending_creation.push(TerraformResource {
+            address: "additional.resource".to_string(),
+            preview: json!({}),
+            r#type: "0".to_string(),
+        });
+
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: None,
+        });
+
+        let first_press_down = handle_keypress(&plan, state, Key::Char('j'));
+
+        let expected_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: None,
+        });
+
+        assert_eq!(Some(expected_state), first_press_down);
+
+        let second_press_down = handle_keypress(&plan, first_press_down.unwrap(), Key::Down);
+
+        let expected_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(1),
+            selected_delete: None,
+        });
+
+        assert_eq!(Some(expected_state), second_press_down);
+    }
+
+    #[test]
+    fn when_browsing_resources_up_scrolls_backward_jn_list_of_resources_for_action_in_scope() {
+        let mut plan = simple_plan(1);
+        plan.pending_deletion.push(TerraformResource {
+            address: "additional.resource".to_string(),
+            preview: json!({}),
+            r#type: "0".to_string(),
+        });
+
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
+            selected_create: Some(100),
+            selected_delete: None,
+        });
+
+        let first_press_up = handle_keypress(&plan, state, Key::Char('k'));
+
+        let expected_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
+            selected_create: Some(100),
+            selected_delete: Some(1),
+        });
+
+        assert_eq!(Some(expected_state), first_press_up);
+
+        let second_press_up = handle_keypress(&plan, first_press_up.unwrap(), Key::Up);
+
+        let expected_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Delete,
+            r#type: "0".to_string(),
+            selected_create: Some(100),
+            selected_delete: Some(0),
+        });
+
+        assert_eq!(Some(expected_state), second_press_up);
+    }
+
+    // TODO: if list is empty, do not advance into it
 }
