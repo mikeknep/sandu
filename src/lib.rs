@@ -462,31 +462,31 @@ mod tests {
 
     #[test]
     fn scroll_forwards_through_types() {
-        let tfplan = simple_plan(3);
+        let plan = simple_plan(3);
         let state = State::ChoosingType(ChoosingType { selected: None });
 
-        let next_0 = handle_keypress(&tfplan, state, Key::Char('j'));
+        let next_0 = handle_keypress(&plan, state, Key::Char('j'));
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
             next_0
         );
 
-        let next_1 = handle_keypress(&tfplan, next_0.unwrap(), Key::Char('j'));
+        let next_1 = handle_keypress(&plan, next_0.unwrap(), Key::Char('j'));
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(1) })),
             next_1
         );
 
-        let next_2 = handle_keypress(&tfplan, next_1.unwrap(), Key::Down);
+        let next_2 = handle_keypress(&plan, next_1.unwrap(), Key::Down);
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
             next_2
         );
 
-        let next_reset = handle_keypress(&tfplan, next_2.unwrap(), Key::Down);
+        let next_reset = handle_keypress(&plan, next_2.unwrap(), Key::Down);
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
@@ -496,31 +496,31 @@ mod tests {
 
     #[test]
     fn scroll_backwards_through_types() {
-        let tfplan = simple_plan(3);
+        let plan = simple_plan(3);
         let state = State::ChoosingType(ChoosingType { selected: None });
 
-        let prev_2 = handle_keypress(&tfplan, state, Key::Char('k'));
+        let prev_2 = handle_keypress(&plan, state, Key::Char('k'));
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
             prev_2
         );
 
-        let prev_1 = handle_keypress(&tfplan, prev_2.unwrap(), Key::Char('k'));
+        let prev_1 = handle_keypress(&plan, prev_2.unwrap(), Key::Char('k'));
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(1) })),
             prev_1
         );
 
-        let prev_0 = handle_keypress(&tfplan, prev_1.unwrap(), Key::Up);
+        let prev_0 = handle_keypress(&plan, prev_1.unwrap(), Key::Up);
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
             prev_0
         );
 
-        let prev_reset = handle_keypress(&tfplan, prev_0.unwrap(), Key::Up);
+        let prev_reset = handle_keypress(&plan, prev_0.unwrap(), Key::Up);
 
         assert_eq!(
             Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
@@ -542,13 +542,13 @@ mod tests {
 
     #[test]
     fn browsing_type_moves_state_when_type_is_selected() {
-        let tfplan = &simple_plan(1);
+        let plan = &simple_plan(1);
         let state = State::ChoosingType(ChoosingType { selected: Some(0) });
 
-        let new_state = handle_keypress(&tfplan, state, Key::Char('\n'));
+        let new_state = handle_keypress(&plan, state, Key::Char('\n'));
 
         let expected_state = State::BrowsingResources(BrowsingResources {
-            r#type: tfplan.unique_types()[0].clone(),
+            r#type: plan.unique_types()[0].clone(),
             action_in_scope: TerraformAction::Delete,
             selected_create: None,
             selected_delete: None,
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn when_browsing_resources_left_puts_delete_action_in_scope() {
-        let tfplan = simple_plan(1);
+        let plan = simple_plan(1);
         let state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Create,
             r#type: "0".to_string(),
@@ -567,7 +567,7 @@ mod tests {
             selected_delete: None,
         });
 
-        let first_press_left = handle_keypress(&tfplan, state, Key::Char('h'));
+        let first_press_left = handle_keypress(&plan, state, Key::Char('h'));
 
         let expected_state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Delete,
@@ -587,13 +587,13 @@ mod tests {
         });
         assert_eq!(
             Some(expected_state),
-            handle_keypress(&tfplan, first_press_left.unwrap(), Key::Left)
+            handle_keypress(&plan, first_press_left.unwrap(), Key::Left)
         );
     }
 
     #[test]
     fn when_browsing_resources_right_puts_create_action_in_scope() {
-        let tfplan = simple_plan(1);
+        let plan = simple_plan(1);
         let state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             r#type: "0".to_string(),
@@ -601,7 +601,7 @@ mod tests {
             selected_delete: None,
         });
 
-        let first_press_right = handle_keypress(&tfplan, state, Key::Char('l'));
+        let first_press_right = handle_keypress(&plan, state, Key::Char('l'));
 
         let expected_state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Create,
@@ -621,7 +621,7 @@ mod tests {
         });
         assert_eq!(
             Some(expected_state),
-            handle_keypress(&tfplan, first_press_right.unwrap(), Key::Right)
+            handle_keypress(&plan, first_press_right.unwrap(), Key::Right)
         );
     }
 }
