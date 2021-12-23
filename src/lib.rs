@@ -137,17 +137,18 @@ impl From<TfPlan> for TerraformPlan {
 
         for changing_resource in tfplan.changing_resources {
             match (
+                changing_resource.change.actions.len(),
                 changing_resource.change.before,
                 changing_resource.change.after,
             ) {
-                (Some(before), None) => {
+                (1, Some(before), None) => {
                     pending_deletion.push(TerraformResource {
                         address: changing_resource.address.clone(),
                         r#type: changing_resource.r#type.clone(),
                         preview: before,
                     });
                 }
-                (None, Some(after)) => {
+                (1, None, Some(after)) => {
                     pending_creation.push(TerraformResource {
                         address: changing_resource.address.clone(),
                         r#type: changing_resource.r#type.clone(),
