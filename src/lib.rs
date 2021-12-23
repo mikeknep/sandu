@@ -441,7 +441,7 @@ fn handle_keypress_while_confirming_move(
             };
             (State::Finished, Effect::StageOperation(operation))
         }
-        _ => todo!(),
+        _ => (State::ConfirmMove(state.clone()), Effect::NoOp),
     }
 }
 
@@ -456,7 +456,7 @@ fn handle_keypress_while_confirming_remove(
             let operation = Operation::Remove(state.address.clone());
             (State::Finished, Effect::StageOperation(operation))
         }
-        _ => todo!(),
+        _ => (State::ConfirmRemove(state.clone()), Effect::NoOp),
     }
 }
 
@@ -494,7 +494,7 @@ fn handle_keypress_while_confirming_import(
             });
             (new_state, Effect::NoOp)
         }
-        _ => todo!(),
+        _ => (State::ConfirmImport(state.clone()), Effect::NoOp),
     }
 }
 
