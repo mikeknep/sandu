@@ -242,7 +242,14 @@ struct ConfirmMove {
 
 #[derive(Clone, Debug, PartialEq)]
 struct ConfirmRemove {
-    delete_address: String,
+    address: String,
+    previous_state: Box<State>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ConfirmImport {
+    address: String,
+    identifier: String,
     previous_state: Box<State>,
 }
 
@@ -252,6 +259,7 @@ enum State {
     BrowsingResources(BrowsingResources),
     ConfirmMove(ConfirmMove),
     ConfirmRemove(ConfirmRemove),
+    ConfirmImport(ConfirmImport),
     Finished,
 }
 
@@ -267,6 +275,9 @@ fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (State, Eff
         State::ConfirmMove(current) => handle_keypress_while_confirming_move(plan, current, key),
         State::ConfirmRemove(current) => {
             handle_keypress_while_confirming_remove(plan, current, key)
+        }
+        State::ConfirmImport(current) => {
+            handle_keypress_while_confirming_import(plan, current, key)
         }
         State::Finished => (State::Finished, Effect::NoOp),
     }
@@ -386,12 +397,26 @@ fn handle_keypress_while_browsing_resources(
         }
         Key::Char('r') => {
             if let Some(d) = state.selected_delete {
-                let delete_address = resources_of_type(&state.r#type, &plan.pending_deletion)[d]
+                let address = resources_of_type(&state.r#type, &plan.pending_deletion)[d]
                     .address
                     .clone();
                 State::ConfirmRemove(ConfirmRemove {
                     previous_state: Box::new(State::BrowsingResources(state.clone())),
-                    delete_address,
+                    address,
+                })
+            } else {
+                State::BrowsingResources(state.clone())
+            }
+        }
+        Key::Char('i') => {
+            if let Some(c) = state.selected_create {
+                let address = resources_of_type(&state.r#type, &plan.pending_creation)[c]
+                    .address
+                    .clone();
+                State::ConfirmImport(ConfirmImport {
+                    previous_state: Box::new(State::BrowsingResources(state.clone())),
+                    identifier: "".to_string(),
+                    address,
                 })
             } else {
                 State::BrowsingResources(state.clone())
@@ -428,8 +453,46 @@ fn handle_keypress_while_confirming_remove(
     match key {
         Key::Backspace => (*state.previous_state.clone(), Effect::NoOp),
         Key::Char('\n') => {
-            let operation = Operation::Remove(state.delete_address.clone());
+            let operation = Operation::Remove(state.address.clone());
             (State::Finished, Effect::StageOperation(operation))
+        }
+        _ => todo!(),
+    }
+}
+
+fn handle_keypress_while_confirming_import(
+    _plan: &TerraformPlan,
+    state: &ConfirmImport,
+    key: Key,
+) -> (State, Effect) {
+    match key {
+        Key::Backspace => match state.identifier.len() {
+            0 => (*state.previous_state.clone(), Effect::NoOp),
+            _ => {
+                let mut identifier = state.identifier.clone();
+                identifier.pop();
+                let new_state = State::ConfirmImport(ConfirmImport {
+                    identifier,
+                    ..state.clone()
+                });
+                (new_state, Effect::NoOp)
+            }
+        },
+        Key::Char('\n') => {
+            let operation = Operation::Import {
+                address: state.address.clone(),
+                identifier: state.identifier.clone(),
+            };
+            (State::Finished, Effect::StageOperation(operation))
+        }
+        Key::Char(c) => {
+            let mut identifier = state.identifier.clone();
+            identifier.push(c);
+            let new_state = State::ConfirmImport(ConfirmImport {
+                identifier,
+                ..state.clone()
+            });
+            (new_state, Effect::NoOp)
         }
         _ => todo!(),
     }
@@ -935,6 +998,51 @@ mod tests {
     }
 
     #[test]
+    fn proposing_an_import_operation_requires_selected_crete() {
+        let plan = simple_plan(1);
+        let blank_browsing_resources_state = BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: None,
+        };
+        let nothing_selected = State::BrowsingResources(blank_browsing_resources_state.clone());
+        let only_delete_selected = State::BrowsingResources(BrowsingResources {
+            selected_delete: Some(0),
+            ..blank_browsing_resources_state.clone()
+        });
+
+        let (nothing_selected_press, _) = handle_keypress(&plan, &nothing_selected, Key::Char('m'));
+        let (only_delete_selected_press, _) =
+            handle_keypress(&plan, &only_delete_selected, Key::Char('i'));
+
+        assert_eq!(nothing_selected, nothing_selected_press);
+
+        assert_eq!(only_delete_selected, only_delete_selected_press);
+    }
+
+    #[test]
+    fn propose_an_import_operation() {
+        let plan = simple_plan(1);
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: None,
+        });
+
+        let expected_state = State::ConfirmImport(ConfirmImport {
+            identifier: "".to_string(),
+            address: "0.0".to_string(),
+            previous_state: Box::new(state.clone()),
+        });
+
+        let (confirm_import_state, _) = handle_keypress(&plan, &state, Key::Char('i'));
+
+        assert_eq!(expected_state, confirm_import_state);
+    }
+
+    #[test]
     fn propose_a_remove_operation() {
         let plan = simple_plan(1);
         let state = State::BrowsingResources(BrowsingResources {
@@ -945,7 +1053,7 @@ mod tests {
         });
 
         let expected_state = State::ConfirmRemove(ConfirmRemove {
-            delete_address: "0.0".to_string(),
+            address: "0.0".to_string(),
             previous_state: Box::new(state.clone()),
         });
 
@@ -991,9 +1099,9 @@ mod tests {
             previous_state: Box::new(browsing_state.clone()),
         });
 
-        let (abort_move_state, _) = handle_keypress(&plan, &state, Key::Backspace);
+        let (abort_state, _) = handle_keypress(&plan, &state, Key::Backspace);
 
-        assert_eq!(browsing_state, abort_move_state);
+        assert_eq!(browsing_state, abort_state);
     }
 
     #[test]
@@ -1033,13 +1141,13 @@ mod tests {
         });
 
         let state = State::ConfirmRemove(ConfirmRemove {
-            delete_address: "0.0".to_string(),
+            address: "0.0".to_string(),
             previous_state: Box::new(browsing_state.clone()),
         });
 
-        let (abort_move_state, _) = handle_keypress(&plan, &state, Key::Backspace);
+        let (abort_state, _) = handle_keypress(&plan, &state, Key::Backspace);
 
-        assert_eq!(browsing_state, abort_move_state);
+        assert_eq!(browsing_state, abort_state);
     }
 
     #[test]
@@ -1052,7 +1160,7 @@ mod tests {
             selected_delete: Some(0),
         });
         let state = State::ConfirmRemove(ConfirmRemove {
-            delete_address: "remove".to_string(),
+            address: "remove".to_string(),
             previous_state: Box::new(browsing_state.clone()),
         });
 
@@ -1060,6 +1168,107 @@ mod tests {
 
         assert_eq!(
             Effect::StageOperation(Operation::Remove("remove".to_string())),
+            effect
+        );
+    }
+
+    #[test]
+    fn aborting_an_import_operation_returns_to_previous_state_if_identifier_is_empty() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: Some(0),
+            selected_delete: None,
+        });
+
+        let state = State::ConfirmImport(ConfirmImport {
+            address: "0.0".to_string(),
+            identifier: "".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let (abort_state, _) = handle_keypress(&plan, &state, Key::Backspace);
+
+        assert_eq!(browsing_state, abort_state);
+    }
+
+    #[test]
+    fn backspacing_while_identifer_is_not_empty_removes_from_identifier() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+        let import = ConfirmImport {
+            address: "import".to_string(),
+            identifier: "a".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        };
+        let initial_state = State::ConfirmImport(import.clone());
+
+        let (identifier_empty, _) = handle_keypress(&plan, &initial_state, Key::Backspace);
+
+        assert_eq!(
+            State::ConfirmImport(ConfirmImport {
+                identifier: "".to_string(),
+                ..import.clone()
+            }),
+            identifier_empty.clone()
+        );
+    }
+
+    #[test]
+    fn typing_during_confirm_import_appends_to_identifier() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+        let import = ConfirmImport {
+            address: "import".to_string(),
+            identifier: "".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        };
+        let initial_state = State::ConfirmImport(import.clone());
+
+        let (identifier_a, _) = handle_keypress(&plan, &initial_state, Key::Char('a'));
+
+        assert_eq!(
+            State::ConfirmImport(ConfirmImport {
+                identifier: "a".to_string(),
+                ..import.clone()
+            }),
+            identifier_a.clone()
+        );
+    }
+
+    #[test]
+    fn confirming_an_import_sends_a_stage_operation_effect_with_an_import() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+        let state = State::ConfirmImport(ConfirmImport {
+            address: "import".to_string(),
+            identifier: "identifier".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let (_, effect) = handle_keypress(&plan, &state, Key::Char('\n'));
+
+        assert_eq!(
+            Effect::StageOperation(Operation::Import {
+                address: "import".to_string(),
+                identifier: "identifier".to_string()
+            }),
             effect
         );
     }
