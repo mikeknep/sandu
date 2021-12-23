@@ -241,10 +241,17 @@ struct ConfirmMove {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+struct ConfirmRemove {
+    delete_address: String,
+    previous_state: Box<State>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 enum State {
     ChoosingType(ChoosingType),
     BrowsingResources(BrowsingResources),
     ConfirmMove(ConfirmMove),
+    ConfirmRemove(ConfirmRemove),
     Finished,
 }
 
@@ -258,6 +265,9 @@ fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (State, Eff
             handle_keypress_while_browsing_resources(plan, current, key)
         }
         State::ConfirmMove(current) => handle_keypress_while_confirming_move(plan, current, key),
+        State::ConfirmRemove(current) => {
+            handle_keypress_while_confirming_remove(plan, current, key)
+        }
         State::Finished => (State::Finished, Effect::NoOp),
     }
 }
@@ -374,6 +384,19 @@ fn handle_keypress_while_browsing_resources(
                 State::BrowsingResources(state.clone())
             }
         }
+        Key::Char('r') => {
+            if let Some(d) = state.selected_delete {
+                let delete_address = resources_of_type(&state.r#type, &plan.pending_deletion)[d]
+                    .address
+                    .clone();
+                State::ConfirmRemove(ConfirmRemove {
+                    previous_state: Box::new(State::BrowsingResources(state.clone())),
+                    delete_address,
+                })
+            } else {
+                State::BrowsingResources(state.clone())
+            }
+        }
         _ => State::BrowsingResources(state.clone()),
     };
     (new_state, Effect::NoOp)
@@ -391,6 +414,21 @@ fn handle_keypress_while_confirming_move(
                 from: state.delete_address.clone(),
                 to: state.create_address.clone(),
             };
+            (State::Finished, Effect::StageOperation(operation))
+        }
+        _ => todo!(),
+    }
+}
+
+fn handle_keypress_while_confirming_remove(
+    _plan: &TerraformPlan,
+    state: &ConfirmRemove,
+    key: Key,
+) -> (State, Effect) {
+    match key {
+        Key::Backspace => (*state.previous_state.clone(), Effect::NoOp),
+        Key::Char('\n') => {
+            let operation = Operation::Remove(state.delete_address.clone());
             (State::Finished, Effect::StageOperation(operation))
         }
         _ => todo!(),
@@ -873,6 +911,50 @@ mod tests {
     }
 
     #[test]
+    fn proposing_a_remove_operation_requires_selected_delete() {
+        let plan = simple_plan(1);
+        let blank_browsing_resources_state = BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: None,
+        };
+        let nothing_selected = State::BrowsingResources(blank_browsing_resources_state.clone());
+        let only_create_selected = State::BrowsingResources(BrowsingResources {
+            selected_create: Some(0),
+            ..blank_browsing_resources_state.clone()
+        });
+
+        let (nothing_selected_press, _) = handle_keypress(&plan, &nothing_selected, Key::Char('m'));
+        let (only_create_selected_press, _) =
+            handle_keypress(&plan, &only_create_selected, Key::Char('r'));
+
+        assert_eq!(nothing_selected, nothing_selected_press);
+
+        assert_eq!(only_create_selected, only_create_selected_press);
+    }
+
+    #[test]
+    fn propose_a_remove_operation() {
+        let plan = simple_plan(1);
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+
+        let expected_state = State::ConfirmRemove(ConfirmRemove {
+            delete_address: "0.0".to_string(),
+            previous_state: Box::new(state.clone()),
+        });
+
+        let (confirm_remove_state, _) = handle_keypress(&plan, &state, Key::Char('r'));
+
+        assert_eq!(expected_state, confirm_remove_state);
+    }
+
+    #[test]
     fn propose_a_state_move_operation() {
         let plan = simple_plan(1);
         let state = State::BrowsingResources(BrowsingResources {
@@ -936,6 +1018,48 @@ mod tests {
                 from: "from".to_string(),
                 to: "to".to_string()
             }),
+            effect
+        );
+    }
+
+    #[test]
+    fn aborting_a_remove_operation_returns_to_previous_state() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+
+        let state = State::ConfirmRemove(ConfirmRemove {
+            delete_address: "0.0".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let (abort_move_state, _) = handle_keypress(&plan, &state, Key::Backspace);
+
+        assert_eq!(browsing_state, abort_move_state);
+    }
+
+    #[test]
+    fn confirming_a_remove_sends_a_stage_operation_effect_with_a_remove() {
+        let plan = simple_plan(1);
+        let browsing_state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: Some(0),
+        });
+        let state = State::ConfirmRemove(ConfirmRemove {
+            delete_address: "remove".to_string(),
+            previous_state: Box::new(browsing_state.clone()),
+        });
+
+        let (_, effect) = handle_keypress(&plan, &state, Key::Char('\n'));
+
+        assert_eq!(
+            Effect::StageOperation(Operation::Remove("remove".to_string())),
             effect
         );
     }
