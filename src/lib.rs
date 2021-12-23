@@ -63,17 +63,13 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let mut keys = io::stdin().keys();
     terminal.clear()?;
 
-    loop {
+    while model.editing() {
         draw(&mut terminal, &model, &plan)?;
         let key = keys
             .next()
             .ok_or_else(|| SanduError::new("Error during keypress event"))??;
-        match handle_keypress(&plan, &model.state, key) {
-            (None, _) => break,
-            (Some(new_state), effect) => {
-                model.accept(new_state, effect);
-            }
-        }
+        let (new_state, effect) = handle_keypress(&plan, &model.state, key);
+        model.accept(new_state, effect);
     }
     Ok(())
 }
@@ -199,8 +195,12 @@ impl Model {
         }
     }
 
-    fn accept(&mut self, new_state: State, effect: Effect) {
-        self.state = new_state;
+    fn editing(&self) -> bool {
+        self.state != State::Finished
+    }
+
+    fn accept(&mut self, state: State, effect: Effect) {
+        self.state = state;
         match effect {
             Effect::StageOperation(operation) => self.staged_operations.push(operation),
             Effect::NoOp => {}
@@ -245,11 +245,12 @@ enum State {
     ChoosingType(ChoosingType),
     BrowsingResources(BrowsingResources),
     ConfirmMove(ConfirmMove),
+    Finished,
 }
 
-fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (Option<State>, Effect) {
+fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (State, Effect) {
     if let Key::Char('q') = key {
-        return (None, Effect::NoOp);
+        return (State::Finished, Effect::NoOp);
     }
     match state {
         State::ChoosingType(current) => handle_keypress_while_choosing_type(plan, current, key),
@@ -257,6 +258,7 @@ fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (Option<Sta
             handle_keypress_while_browsing_resources(plan, current, key)
         }
         State::ConfirmMove(current) => handle_keypress_while_confirming_move(plan, current, key),
+        State::Finished => (State::Finished, Effect::NoOp),
     }
 }
 
@@ -264,33 +266,33 @@ fn handle_keypress_while_choosing_type(
     plan: &TerraformPlan,
     state: &ChoosingType,
     key: Key,
-) -> (Option<State>, Effect) {
+) -> (State, Effect) {
     let new_state = match key {
         Key::Char('j') | Key::Down => {
             let next_index = cycle_next(plan.unique_types().len(), &state.selected);
-            Some(State::ChoosingType(ChoosingType {
+            State::ChoosingType(ChoosingType {
                 selected: next_index,
-            }))
+            })
         }
         Key::Char('k') | Key::Up => {
             let previous_index = cycle_previous(plan.unique_types().len(), &state.selected);
-            Some(State::ChoosingType(ChoosingType {
+            State::ChoosingType(ChoosingType {
                 selected: previous_index,
-            }))
+            })
         }
         Key::Char('\n') => {
             if let Some(i) = state.selected {
-                Some(State::BrowsingResources(BrowsingResources {
+                State::BrowsingResources(BrowsingResources {
                     action_in_scope: TerraformAction::Delete,
                     r#type: plan.unique_types()[i].clone(),
                     selected_create: None,
                     selected_delete: None,
-                }))
+                })
             } else {
-                Some(State::ChoosingType(state.clone()))
+                State::ChoosingType(state.clone())
             }
         }
-        _ => Some(State::ChoosingType(state.clone())),
+        _ => State::ChoosingType(state.clone()),
     };
     (new_state, Effect::NoOp)
 }
@@ -299,16 +301,16 @@ fn handle_keypress_while_browsing_resources(
     plan: &TerraformPlan,
     state: &BrowsingResources,
     key: Key,
-) -> (Option<State>, Effect) {
+) -> (State, Effect) {
     let new_state = match key {
-        Key::Char('h') | Key::Left => Some(State::BrowsingResources(BrowsingResources {
+        Key::Char('h') | Key::Left => State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Delete,
             ..state.clone()
-        })),
-        Key::Char('l') | Key::Right => Some(State::BrowsingResources(BrowsingResources {
+        }),
+        Key::Char('l') | Key::Right => State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Create,
             ..state.clone()
-        })),
+        }),
         Key::Char('j') | Key::Down => {
             let (selected_create, selected_delete) = match state.action_in_scope {
                 TerraformAction::Create => {
@@ -326,11 +328,11 @@ fn handle_keypress_while_browsing_resources(
                     (state.selected_create, newly_selected_delete)
                 }
             };
-            Some(State::BrowsingResources(BrowsingResources {
+            State::BrowsingResources(BrowsingResources {
                 selected_create,
                 selected_delete,
                 ..state.clone()
-            }))
+            })
         }
         Key::Char('k') | Key::Up => {
             let (selected_create, selected_delete) = match state.action_in_scope {
@@ -349,11 +351,11 @@ fn handle_keypress_while_browsing_resources(
                     (state.selected_create, newly_selected_delete)
                 }
             };
-            Some(State::BrowsingResources(BrowsingResources {
+            State::BrowsingResources(BrowsingResources {
                 selected_create,
                 selected_delete,
                 ..state.clone()
-            }))
+            })
         }
         Key::Char('m') => {
             if let (Some(c), Some(d)) = (state.selected_create, state.selected_delete) {
@@ -363,16 +365,16 @@ fn handle_keypress_while_browsing_resources(
                 let delete_address = resources_of_type(&state.r#type, &plan.pending_deletion)[d]
                     .address
                     .clone();
-                Some(State::ConfirmMove(ConfirmMove {
+                State::ConfirmMove(ConfirmMove {
                     previous_state: Box::new(State::BrowsingResources(state.clone())),
                     create_address,
                     delete_address,
-                }))
+                })
             } else {
-                Some(State::BrowsingResources(state.clone()))
+                State::BrowsingResources(state.clone())
             }
         }
-        _ => Some(State::BrowsingResources(state.clone())),
+        _ => State::BrowsingResources(state.clone()),
     };
     (new_state, Effect::NoOp)
 }
@@ -381,16 +383,15 @@ fn handle_keypress_while_confirming_move(
     _plan: &TerraformPlan,
     state: &ConfirmMove,
     key: Key,
-) -> (Option<State>, Effect) {
+) -> (State, Effect) {
     match key {
-        Key::Backspace => (Some(*state.previous_state.clone()), Effect::NoOp),
+        Key::Backspace => (*state.previous_state.clone(), Effect::NoOp),
         Key::Char('\n') => {
             let operation = Operation::Move {
                 from: state.delete_address.clone(),
                 to: state.create_address.clone(),
             };
-            let new_state = None;
-            (new_state, Effect::StageOperation(operation))
+            (State::Finished, Effect::StageOperation(operation))
         }
         _ => todo!(),
     }
@@ -583,11 +584,11 @@ mod tests {
     }
 
     #[test]
-    fn q_returns_empty_state() {
+    fn q_returns_finished_state() {
         let state = State::ChoosingType(ChoosingType { selected: None });
         let (new_state, _) = handle_keypress(&simple_plan(1), &state, Key::Char('q'));
 
-        assert!(new_state.is_none());
+        assert_eq!(State::Finished, new_state);
     }
 
     #[test]
@@ -598,28 +599,28 @@ mod tests {
         let (next_0, _) = handle_keypress(&plan, &state, Key::Char('j'));
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
+            State::ChoosingType(ChoosingType { selected: Some(0) }),
             next_0
         );
 
-        let (next_1, _) = handle_keypress(&plan, &next_0.unwrap(), Key::Char('j'));
+        let (next_1, _) = handle_keypress(&plan, &next_0, Key::Char('j'));
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(1) })),
+            State::ChoosingType(ChoosingType { selected: Some(1) }),
             next_1
         );
 
-        let (next_2, _) = handle_keypress(&plan, &next_1.unwrap(), Key::Down);
+        let (next_2, _) = handle_keypress(&plan, &next_1, Key::Down);
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
+            State::ChoosingType(ChoosingType { selected: Some(2) }),
             next_2
         );
 
-        let (next_reset, _) = handle_keypress(&plan, &next_2.unwrap(), Key::Down);
+        let (next_reset, _) = handle_keypress(&plan, &next_2, Key::Down);
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
+            State::ChoosingType(ChoosingType { selected: Some(0) }),
             next_reset
         );
     }
@@ -632,28 +633,28 @@ mod tests {
         let (prev_2, _) = handle_keypress(&plan, &state, Key::Char('k'));
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
+            State::ChoosingType(ChoosingType { selected: Some(2) }),
             prev_2
         );
 
-        let (prev_1, _) = handle_keypress(&plan, &prev_2.unwrap(), Key::Char('k'));
+        let (prev_1, _) = handle_keypress(&plan, &prev_2, Key::Char('k'));
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(1) })),
+            State::ChoosingType(ChoosingType { selected: Some(1) }),
             prev_1
         );
 
-        let (prev_0, _) = handle_keypress(&plan, &prev_1.unwrap(), Key::Up);
+        let (prev_0, _) = handle_keypress(&plan, &prev_1, Key::Up);
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(0) })),
+            State::ChoosingType(ChoosingType { selected: Some(0) }),
             prev_0
         );
 
-        let (prev_reset, _) = handle_keypress(&plan, &prev_0.unwrap(), Key::Up);
+        let (prev_reset, _) = handle_keypress(&plan, &prev_0, Key::Up);
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: Some(2) })),
+            State::ChoosingType(ChoosingType { selected: Some(2) }),
             prev_reset
         );
     }
@@ -665,7 +666,7 @@ mod tests {
         let (new_state, _) = handle_keypress(&simple_plan(1), &state, Key::Char('\n'));
 
         assert_eq!(
-            Some(State::ChoosingType(ChoosingType { selected: None })),
+            State::ChoosingType(ChoosingType { selected: None }),
             new_state
         );
     }
@@ -684,7 +685,7 @@ mod tests {
             selected_delete: None,
         });
 
-        assert_eq!(Some(expected_state), new_state);
+        assert_eq!(expected_state, new_state);
     }
 
     #[test]
@@ -706,7 +707,7 @@ mod tests {
             selected_delete: None,
         });
 
-        assert_eq!(Some(expected_state), first_press_left);
+        assert_eq!(expected_state, first_press_left);
 
         // another left press at this point has no effect
         let expected_state = State::BrowsingResources(BrowsingResources {
@@ -716,9 +717,9 @@ mod tests {
             selected_delete: None,
         });
 
-        let (next_press_left, _) = handle_keypress(&plan, &first_press_left.unwrap(), Key::Left);
+        let (next_press_left, _) = handle_keypress(&plan, &first_press_left, Key::Left);
 
-        assert_eq!(Some(expected_state), next_press_left);
+        assert_eq!(expected_state, next_press_left);
     }
 
     #[test]
@@ -740,7 +741,7 @@ mod tests {
             selected_delete: None,
         });
 
-        assert_eq!(Some(expected_state), first_press_right);
+        assert_eq!(expected_state, first_press_right);
 
         // another right press at this point has no effect
         let expected_state = State::BrowsingResources(BrowsingResources {
@@ -750,9 +751,9 @@ mod tests {
             selected_delete: None,
         });
 
-        let (next_press_right, _) = handle_keypress(&plan, &first_press_right.unwrap(), Key::Right);
+        let (next_press_right, _) = handle_keypress(&plan, &first_press_right, Key::Right);
 
-        assert_eq!(Some(expected_state), next_press_right);
+        assert_eq!(expected_state, next_press_right);
     }
 
     #[test]
@@ -780,9 +781,9 @@ mod tests {
             selected_delete: None,
         });
 
-        assert_eq!(Some(expected_state), first_press_down);
+        assert_eq!(expected_state, first_press_down);
 
-        let (second_press_down, _) = handle_keypress(&plan, &first_press_down.unwrap(), Key::Down);
+        let (second_press_down, _) = handle_keypress(&plan, &first_press_down, Key::Down);
 
         let expected_state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Create,
@@ -791,7 +792,7 @@ mod tests {
             selected_delete: None,
         });
 
-        assert_eq!(Some(expected_state), second_press_down);
+        assert_eq!(expected_state, second_press_down);
     }
 
     #[test]
@@ -819,9 +820,9 @@ mod tests {
             selected_delete: Some(1),
         });
 
-        assert_eq!(Some(expected_state), first_press_up);
+        assert_eq!(expected_state, first_press_up);
 
-        let (second_press_up, _) = handle_keypress(&plan, &first_press_up.unwrap(), Key::Up);
+        let (second_press_up, _) = handle_keypress(&plan, &first_press_up, Key::Up);
 
         let expected_state = State::BrowsingResources(BrowsingResources {
             action_in_scope: TerraformAction::Delete,
@@ -830,7 +831,7 @@ mod tests {
             selected_delete: Some(0),
         });
 
-        assert_eq!(Some(expected_state), second_press_up);
+        assert_eq!(expected_state, second_press_up);
     }
 
     #[test]
@@ -864,17 +865,11 @@ mod tests {
         let (only_create_selected_press, _) =
             handle_keypress(&plan, &only_create_selected, Key::Char('m'));
 
-        assert_eq!(Some(nothing_selected.clone()), nothing_selected_press);
+        assert_eq!(nothing_selected, nothing_selected_press);
 
-        assert_eq!(
-            Some(only_delete_selected.clone()),
-            only_delete_selected_press
-        );
+        assert_eq!(only_delete_selected, only_delete_selected_press);
 
-        assert_eq!(
-            Some(only_create_selected.clone()),
-            only_create_selected_press
-        );
+        assert_eq!(only_create_selected, only_create_selected_press);
     }
 
     #[test]
@@ -895,7 +890,7 @@ mod tests {
 
         let (confirm_move_state, _) = handle_keypress(&plan, &state, Key::Char('m'));
 
-        assert_eq!(Some(expected_state), confirm_move_state);
+        assert_eq!(expected_state, confirm_move_state);
     }
 
     #[test]
@@ -916,7 +911,7 @@ mod tests {
 
         let (abort_move_state, _) = handle_keypress(&plan, &state, Key::Backspace);
 
-        assert_eq!(Some(browsing_state), abort_move_state);
+        assert_eq!(browsing_state, abort_move_state);
     }
 
     #[test]
