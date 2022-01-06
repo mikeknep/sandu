@@ -91,8 +91,7 @@ where
     B: Backend,
 {
     terminal.draw(|f| match &model.state {
-        State::ChoosingType(choosing_type) => {
-            let unique_types_modal = Block::default().title("Types").borders(Borders::ALL);
+        State::ChoosingType(state) => {
             let area = centered_rect(60, 20, f.size());
             let unique_types_list_items: Vec<ListItem> = plan
                 .unique_types()
@@ -100,11 +99,61 @@ where
                 .map(|t| ListItem::new(Span::raw(t.clone())))
                 .collect();
             let unique_types_list = List::new(unique_types_list_items)
-                .block(unique_types_modal)
+                .block(Block::default().title("Types").borders(Borders::ALL))
                 .highlight_style(Style::default().bg(Color::Green));
             let mut unique_types_list_state = ListState::default();
-            unique_types_list_state.select(choosing_type.selected);
+            unique_types_list_state.select(state.selected);
             f.render_stateful_widget(unique_types_list, area, &mut unique_types_list_state);
+        }
+        State::BrowsingResources(state) => {
+            let panes = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
+                    ]
+                    .as_ref(),
+                )
+                .split(f.size());
+            let deleting_list_pane = panes[0];
+            let deleting_preview_pane = panes[1];
+            let creating_preview_pane = panes[2];
+            let creating_list_pane = panes[3];
+
+            let deleting_resources_list_items: Vec<ListItem> =
+                resources_of_type(&state.r#type, &plan.pending_deletion)
+                    .iter()
+                    .map(|r| ListItem::new(Span::raw(r.address.clone())))
+                    .collect();
+            let deleting_resources_list = List::new(deleting_resources_list_items)
+                .block(Block::default().title("Deleting").borders(Borders::ALL))
+                .highlight_style(Style::default().bg(Color::Green));
+            let mut deleting_resources_list_state = ListState::default();
+            deleting_resources_list_state.select(state.selected_delete);
+            f.render_stateful_widget(
+                deleting_resources_list,
+                deleting_list_pane,
+                &mut deleting_resources_list_state,
+            );
+
+            let creating_resources_list_items: Vec<ListItem> =
+                resources_of_type(&state.r#type, &plan.pending_creation)
+                    .iter()
+                    .map(|r| ListItem::new(Span::raw(r.address.clone())))
+                    .collect();
+            let creating_resources_list = List::new(creating_resources_list_items)
+                .block(Block::default().title("Creating").borders(Borders::ALL))
+                .highlight_style(Style::default().bg(Color::Green));
+            let mut creating_resources_list_state = ListState::default();
+            creating_resources_list_state.select(state.selected_create);
+            f.render_stateful_widget(
+                creating_resources_list,
+                creating_list_pane,
+                &mut creating_resources_list_state,
+            );
         }
         _ => {}
     })?;
