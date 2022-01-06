@@ -98,11 +98,8 @@ where
                 .iter()
                 .map(|t| ListItem::new(Span::raw(t.clone())))
                 .collect();
-            let unique_types_list = List::new(unique_types_list_items)
-                .block(Block::default().title("Types").borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::Green));
-            let mut unique_types_list_state = ListState::default();
-            unique_types_list_state.select(state.selected);
+            let (unique_types_list, mut unique_types_list_state) =
+                tui_list_for(unique_types_list_items, "Types".to_string(), state.selected);
             f.render_stateful_widget(unique_types_list, area, &mut unique_types_list_state);
         }
         State::BrowsingResources(state) => {
@@ -128,11 +125,11 @@ where
                     .iter()
                     .map(|r| ListItem::new(Span::raw(r.address.clone())))
                     .collect();
-            let deleting_resources_list = List::new(deleting_resources_list_items)
-                .block(Block::default().title("Deleting").borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::Green));
-            let mut deleting_resources_list_state = ListState::default();
-            deleting_resources_list_state.select(state.selected_delete);
+            let (deleting_resources_list, mut deleting_resources_list_state) = tui_list_for(
+                deleting_resources_list_items,
+                "Deleting".to_string(),
+                state.selected_delete,
+            );
             f.render_stateful_widget(
                 deleting_resources_list,
                 deleting_list_pane,
@@ -144,11 +141,11 @@ where
                     .iter()
                     .map(|r| ListItem::new(Span::raw(r.address.clone())))
                     .collect();
-            let creating_resources_list = List::new(creating_resources_list_items)
-                .block(Block::default().title("Creating").borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::Green));
-            let mut creating_resources_list_state = ListState::default();
-            creating_resources_list_state.select(state.selected_create);
+            let (creating_resources_list, mut creating_resources_list_state) = tui_list_for(
+                creating_resources_list_items,
+                "Creating".to_string(),
+                state.selected_create,
+            );
             f.render_stateful_widget(
                 creating_resources_list,
                 creating_list_pane,
@@ -158,6 +155,15 @@ where
         _ => {}
     })?;
     Ok(())
+}
+
+fn tui_list_for(items: Vec<ListItem>, title: String, selected: Option<usize>) -> (List, ListState) {
+    let list = List::new(items)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .highlight_style(Style::default().bg(Color::Green));
+    let mut list_state = ListState::default();
+    list_state.select(selected);
+    (list, list_state)
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
