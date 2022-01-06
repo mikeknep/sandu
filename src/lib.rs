@@ -13,6 +13,7 @@ use tui::text::Span;
 use tui::widgets::List;
 use tui::widgets::ListItem;
 use tui::widgets::ListState;
+use tui::widgets::Paragraph;
 use tui::{
     backend::{Backend, TermionBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -145,11 +146,11 @@ where
         let creating_preview_pane = panes[2];
         let creating_list_pane = panes[3];
 
-        let deleting_resources_list_items: Vec<ListItem> =
-            resources_of_type(&state.r#type, &plan.pending_deletion)
-                .iter()
-                .map(|r| ListItem::new(Span::raw(r.address.clone())))
-                .collect();
+        let pending_deletion = resources_of_type(&state.r#type, &plan.pending_deletion);
+        let deleting_resources_list_items: Vec<ListItem> = pending_deletion
+            .iter()
+            .map(|r| ListItem::new(Span::raw(r.address.clone())))
+            .collect();
         let (deleting_resources_list, mut deleting_resources_list_state) = tui_list_for(
             deleting_resources_list_items,
             "Deleting".to_string(),
@@ -161,11 +162,20 @@ where
             &mut deleting_resources_list_state,
         );
 
-        let creating_resources_list_items: Vec<ListItem> =
-            resources_of_type(&state.r#type, &plan.pending_creation)
-                .iter()
-                .map(|r| ListItem::new(Span::raw(r.address.clone())))
-                .collect();
+        if let Some(index) = state.selected_delete {
+            let resource = &pending_deletion[index];
+            let preview = serde_json::to_string_pretty(&resource.preview).unwrap();
+            f.render_widget(
+                Paragraph::new(preview).block(Block::default().borders(Borders::ALL)),
+                deleting_preview_pane,
+            );
+        }
+
+        let pending_creation = resources_of_type(&state.r#type, &plan.pending_creation);
+        let creating_resources_list_items: Vec<ListItem> = pending_creation
+            .iter()
+            .map(|r| ListItem::new(Span::raw(r.address.clone())))
+            .collect();
         let (creating_resources_list, mut creating_resources_list_state) = tui_list_for(
             creating_resources_list_items,
             "Creating".to_string(),
@@ -176,6 +186,15 @@ where
             creating_list_pane,
             &mut creating_resources_list_state,
         );
+
+        if let Some(index) = state.selected_create {
+            let resource = &pending_creation[index];
+            let preview = serde_json::to_string_pretty(&resource.preview).unwrap();
+            f.render_widget(
+                Paragraph::new(preview).block(Block::default().borders(Borders::ALL)),
+                creating_preview_pane,
+            );
+        }
     })?;
     Ok(())
 }
