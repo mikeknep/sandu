@@ -96,6 +96,7 @@ where
         State::BrowsingResources(state) => draw_browsing_resources(terminal, plan, state),
         State::ConfirmMove(state) => draw_confirm_move(terminal, plan, state),
         State::ConfirmRemove(state) => draw_confirm_remove(terminal, plan, state),
+        State::ConfirmImport(state) => draw_confirm_import(terminal, plan, state),
         _ => Ok(()),
     }
 }
@@ -210,7 +211,7 @@ where
     B: Backend,
 {
     terminal.draw(|f| {
-        let move_text = format!(
+        let text = format!(
             "
 Confirm address change to stage the operation below.
 
@@ -226,7 +227,7 @@ terraform state mv {} {}
         );
         let area = centered_rect(60, 20, f.size());
         f.render_widget(
-            Paragraph::new(move_text).block(Block::default().borders(Borders::ALL)),
+            Paragraph::new(text).block(Block::default().borders(Borders::ALL)),
             area,
         );
     })?;
@@ -242,7 +243,7 @@ where
     B: Backend,
 {
     terminal.draw(|f| {
-        let move_text = format!(
+        let text = format!(
             "
 Confirm you are removing this resource from Terraform state (i.e. \"forgetting\" it without destroying it) to stage the operation below.
 
@@ -256,7 +257,39 @@ terraform state rm {}
         );
         let area = centered_rect(60, 20, f.size());
         f.render_widget(
-            Paragraph::new(move_text).block(Block::default().borders(Borders::ALL)),
+            Paragraph::new(text).block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+    })?;
+    Ok(())
+}
+
+fn draw_confirm_import<B>(
+    terminal: &mut Terminal<B>,
+    plan: &TerraformPlan,
+    state: &ConfirmImport,
+) -> Result<(), Box<dyn Error>>
+where
+    B: Backend,
+{
+    terminal.draw(|f| {
+        let text = format!(
+            "
+Enter the resource identifier to stage the operation below to import the (existing) resource into Terraform and manage it going forward.
+
+
+Address:     {}
+
+Identifier:  {}
+
+
+terraform import {} {}
+        ",
+            state.address, state.identifier, state.address, state.identifier
+        );
+        let area = centered_rect(60, 20, f.size());
+        f.render_widget(
+            Paragraph::new(text).block(Block::default().borders(Borders::ALL)),
             area,
         );
     })?;
