@@ -7,8 +7,16 @@ use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
+use tui::style::Color;
+use tui::style::Style;
+use tui::text::Span;
+use tui::widgets::List;
+use tui::widgets::ListItem;
+use tui::widgets::ListState;
 use tui::{
     backend::{Backend, TermionBackend},
+    layout::{Constraint, Direction, Layout, Rect},
+    widgets::{Block, Borders},
     Terminal,
 };
 
@@ -75,14 +83,58 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
 }
 
 fn draw<B>(
-    _terminal: &mut Terminal<B>,
-    _model: &Model,
-    _plan: &TerraformPlan,
+    terminal: &mut Terminal<B>,
+    model: &Model,
+    plan: &TerraformPlan,
 ) -> Result<(), Box<dyn Error>>
 where
     B: Backend,
 {
+    terminal.draw(|f| match &model.state {
+        State::ChoosingType(choosing_type) => {
+            let unique_types_modal = Block::default().title("Types").borders(Borders::ALL);
+            let area = centered_rect(60, 20, f.size());
+            let unique_types_list_items: Vec<ListItem> = plan
+                .unique_types()
+                .iter()
+                .map(|t| ListItem::new(Span::raw(t.clone())))
+                .collect();
+            let unique_types_list = List::new(unique_types_list_items)
+                .block(unique_types_modal)
+                .highlight_style(Style::default().bg(Color::Green));
+            let mut unique_types_list_state = ListState::default();
+            unique_types_list_state.select(choosing_type.selected);
+            f.render_stateful_widget(unique_types_list, area, &mut unique_types_list_state);
+        }
+        _ => {}
+    })?;
     Ok(())
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }
 
 #[derive(Deserialize)]
