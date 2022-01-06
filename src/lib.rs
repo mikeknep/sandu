@@ -94,9 +94,9 @@ where
     match &model.state {
         State::ChoosingType(state) => draw_choosing_types(terminal, plan, state),
         State::BrowsingResources(state) => draw_browsing_resources(terminal, plan, state),
-        State::ConfirmMove(state) => draw_confirm_move(terminal, plan, state),
-        State::ConfirmRemove(state) => draw_confirm_remove(terminal, plan, state),
-        State::ConfirmImport(state) => draw_confirm_import(terminal, plan, state),
+        State::ConfirmMove(state) => draw_confirm_move(terminal, state),
+        State::ConfirmRemove(state) => draw_confirm_remove(terminal, state),
+        State::ConfirmImport(state) => draw_confirm_import(terminal, state),
         _ => Ok(()),
     }
 }
@@ -204,7 +204,6 @@ where
 
 fn draw_confirm_move<B>(
     terminal: &mut Terminal<B>,
-    plan: &TerraformPlan,
     state: &ConfirmMove,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -236,7 +235,6 @@ terraform state mv {} {}
 
 fn draw_confirm_remove<B>(
     terminal: &mut Terminal<B>,
-    plan: &TerraformPlan,
     state: &ConfirmRemove,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -266,7 +264,6 @@ terraform state rm {}
 
 fn draw_confirm_import<B>(
     terminal: &mut Terminal<B>,
-    plan: &TerraformPlan,
     state: &ConfirmImport,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -1122,7 +1119,7 @@ mod tests {
     }
 
     #[test]
-    fn when_browsing_resources_down_scrolls_foward_jn_list_of_resources_for_action_in_scope() {
+    fn when_browsing_resources_down_scrolls_foward_in_list_of_resources_for_action_in_scope() {
         let mut plan = simple_plan(1);
         plan.pending_creation.push(TerraformResource {
             address: "additional.resource".to_string(),
