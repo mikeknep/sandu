@@ -95,6 +95,7 @@ where
         State::ChoosingType(state) => draw_choosing_types(terminal, plan, state),
         State::BrowsingResources(state) => draw_browsing_resources(terminal, plan, state),
         State::ConfirmMove(state) => draw_confirm_move(terminal, plan, state),
+        State::ConfirmRemove(state) => draw_confirm_remove(terminal, plan, state),
         _ => Ok(()),
     }
 }
@@ -222,6 +223,36 @@ From:  {}
 terraform state mv {} {}
         ",
             state.delete_address, state.create_address, state.delete_address, state.create_address
+        );
+        let area = centered_rect(60, 20, f.size());
+        f.render_widget(
+            Paragraph::new(move_text).block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+    })?;
+    Ok(())
+}
+
+fn draw_confirm_remove<B>(
+    terminal: &mut Terminal<B>,
+    plan: &TerraformPlan,
+    state: &ConfirmRemove,
+) -> Result<(), Box<dyn Error>>
+where
+    B: Backend,
+{
+    terminal.draw(|f| {
+        let move_text = format!(
+            "
+Confirm you are removing this resource from Terraform state (i.e. \"forgetting\" it without destroying it) to stage the operation below.
+
+
+Address:  {}
+
+
+terraform state rm {}
+        ",
+            state.address, state.address
         );
         let area = centered_rect(60, 20, f.size());
         f.render_widget(
