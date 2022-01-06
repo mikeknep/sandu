@@ -90,69 +90,92 @@ fn draw<B>(
 where
     B: Backend,
 {
-    terminal.draw(|f| match &model.state {
-        State::ChoosingType(state) => {
-            let area = centered_rect(60, 20, f.size());
-            let unique_types_list_items: Vec<ListItem> = plan
-                .unique_types()
+    match &model.state {
+        State::ChoosingType(state) => draw_choosing_types(terminal, plan, state),
+        State::BrowsingResources(state) => draw_browsing_resources(terminal, plan, state),
+        _ => Ok(()),
+    }
+}
+
+fn draw_choosing_types<B>(
+    terminal: &mut Terminal<B>,
+    plan: &TerraformPlan,
+    state: &ChoosingType,
+) -> Result<(), Box<dyn Error>>
+where
+    B: Backend,
+{
+    terminal.draw(|f| {
+        let area = centered_rect(60, 20, f.size());
+        let unique_types_list_items: Vec<ListItem> = plan
+            .unique_types()
+            .iter()
+            .map(|t| ListItem::new(Span::raw(t.clone())))
+            .collect();
+        let (unique_types_list, mut unique_types_list_state) =
+            tui_list_for(unique_types_list_items, "Types".to_string(), state.selected);
+        f.render_stateful_widget(unique_types_list, area, &mut unique_types_list_state);
+    })?;
+    Ok(())
+}
+
+fn draw_browsing_resources<B>(
+    terminal: &mut Terminal<B>,
+    plan: &TerraformPlan,
+    state: &BrowsingResources,
+) -> Result<(), Box<dyn Error>>
+where
+    B: Backend,
+{
+    terminal.draw(|f| {
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(
+                [
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                ]
+                .as_ref(),
+            )
+            .split(f.size());
+        let deleting_list_pane = panes[0];
+        let deleting_preview_pane = panes[1];
+        let creating_preview_pane = panes[2];
+        let creating_list_pane = panes[3];
+
+        let deleting_resources_list_items: Vec<ListItem> =
+            resources_of_type(&state.r#type, &plan.pending_deletion)
                 .iter()
-                .map(|t| ListItem::new(Span::raw(t.clone())))
+                .map(|r| ListItem::new(Span::raw(r.address.clone())))
                 .collect();
-            let (unique_types_list, mut unique_types_list_state) =
-                tui_list_for(unique_types_list_items, "Types".to_string(), state.selected);
-            f.render_stateful_widget(unique_types_list, area, &mut unique_types_list_state);
-        }
-        State::BrowsingResources(state) => {
-            let panes = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints(
-                    [
-                        Constraint::Percentage(25),
-                        Constraint::Percentage(25),
-                        Constraint::Percentage(25),
-                        Constraint::Percentage(25),
-                    ]
-                    .as_ref(),
-                )
-                .split(f.size());
-            let deleting_list_pane = panes[0];
-            let deleting_preview_pane = panes[1];
-            let creating_preview_pane = panes[2];
-            let creating_list_pane = panes[3];
+        let (deleting_resources_list, mut deleting_resources_list_state) = tui_list_for(
+            deleting_resources_list_items,
+            "Deleting".to_string(),
+            state.selected_delete,
+        );
+        f.render_stateful_widget(
+            deleting_resources_list,
+            deleting_list_pane,
+            &mut deleting_resources_list_state,
+        );
 
-            let deleting_resources_list_items: Vec<ListItem> =
-                resources_of_type(&state.r#type, &plan.pending_deletion)
-                    .iter()
-                    .map(|r| ListItem::new(Span::raw(r.address.clone())))
-                    .collect();
-            let (deleting_resources_list, mut deleting_resources_list_state) = tui_list_for(
-                deleting_resources_list_items,
-                "Deleting".to_string(),
-                state.selected_delete,
-            );
-            f.render_stateful_widget(
-                deleting_resources_list,
-                deleting_list_pane,
-                &mut deleting_resources_list_state,
-            );
-
-            let creating_resources_list_items: Vec<ListItem> =
-                resources_of_type(&state.r#type, &plan.pending_creation)
-                    .iter()
-                    .map(|r| ListItem::new(Span::raw(r.address.clone())))
-                    .collect();
-            let (creating_resources_list, mut creating_resources_list_state) = tui_list_for(
-                creating_resources_list_items,
-                "Creating".to_string(),
-                state.selected_create,
-            );
-            f.render_stateful_widget(
-                creating_resources_list,
-                creating_list_pane,
-                &mut creating_resources_list_state,
-            );
-        }
-        _ => {}
+        let creating_resources_list_items: Vec<ListItem> =
+            resources_of_type(&state.r#type, &plan.pending_creation)
+                .iter()
+                .map(|r| ListItem::new(Span::raw(r.address.clone())))
+                .collect();
+        let (creating_resources_list, mut creating_resources_list_state) = tui_list_for(
+            creating_resources_list_items,
+            "Creating".to_string(),
+            state.selected_create,
+        );
+        f.render_stateful_widget(
+            creating_resources_list,
+            creating_list_pane,
+            &mut creating_resources_list_state,
+        );
     })?;
     Ok(())
 }
