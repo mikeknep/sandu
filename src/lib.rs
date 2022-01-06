@@ -97,7 +97,7 @@ where
         State::ConfirmMove(state) => draw_confirm_move(terminal, state),
         State::ConfirmRemove(state) => draw_confirm_remove(terminal, state),
         State::ConfirmImport(state) => draw_confirm_import(terminal, state),
-        _ => Ok(()),
+        State::Finished => Ok(()),
     }
 }
 
