@@ -572,6 +572,7 @@ fn handle_keypress_while_browsing_resources(
                 State::BrowsingResources(state.clone())
             }
         }
+        Key::Backspace => State::ChoosingType(ChoosingType { selected: None }),
         _ => State::BrowsingResources(state.clone()),
     };
     (new_state, Effect::NoOp)
@@ -936,6 +937,22 @@ mod tests {
             selected_delete: None,
         });
 
+        assert_eq!(expected_state, new_state);
+    }
+
+    #[test]
+    fn when_browsing_resources_backspace_returns_to_choosing_type() {
+        let plan = simple_plan(1);
+        let state = State::BrowsingResources(BrowsingResources {
+            action_in_scope: TerraformAction::Create,
+            r#type: "0".to_string(),
+            selected_create: None,
+            selected_delete: None,
+        });
+
+        let (new_state, _) = handle_keypress(&plan, &state, Key::Backspace);
+
+        let expected_state = State::ChoosingType(ChoosingType { selected: None });
         assert_eq!(expected_state, new_state);
     }
 
