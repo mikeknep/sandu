@@ -72,7 +72,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     let mut keys = io::stdin().keys();
     terminal.clear()?;
 
-    while model.editing() {
+    while model.in_progress() {
         draw(&mut terminal, &model, &plan)?;
         let key = keys
             .next()
@@ -449,8 +449,8 @@ impl Model {
         }
     }
 
-    fn editing(&self) -> bool {
-        self.state != State::Finished
+    fn in_progress(&self) -> bool {
+        self.action_state != ActionState::Exiting
     }
 
     fn accept(&mut self, effect: Effect) {
