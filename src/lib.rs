@@ -434,8 +434,35 @@ enum ActionState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+enum NavigationList {
+    Types,
+    Create,
+    Delete,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Navigation {
+    selected_type: Option<usize>,
+    selected_create: Option<usize>,
+    selected_delete: Option<usize>,
+    active_list: NavigationList,
+}
+
+impl Navigation {
+    fn default() -> Self {
+        Navigation {
+            selected_type: None,
+            selected_create: None,
+            selected_delete: None,
+            active_list: NavigationList::Types,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Model {
     action_state: ActionState,
+    navigation: Navigation,
     staged_operations: Vec<Operation>,
     state: State,
 }
@@ -444,6 +471,7 @@ impl Model {
     fn new() -> Self {
         Model {
             action_state: ActionState::Navigating,
+            navigation: Navigation::default(),
             staged_operations: vec![],
             state: State::ChoosingType(ChoosingType { selected: None }),
         }
