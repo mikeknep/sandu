@@ -429,7 +429,7 @@ pub trait Filesystem {
 #[derive(Clone, Debug, PartialEq)]
 enum ActionState {
     Navigating,
-    Confirming,
+    Confirming(Operation),
     Exiting,
 }
 
@@ -483,6 +483,9 @@ impl Model {
 
     fn accept(&mut self, effect: Effect) {
         match effect {
+            Effect::SeekConfirmation(operation) => {
+                self.action_state = ActionState::Confirming(operation)
+            }
             Effect::CloseConfirmationModal => self.action_state = ActionState::Navigating,
             Effect::StageOperation(operation) => self.staged_operations.push(operation),
             Effect::Exit => self.action_state = ActionState::Exiting,
@@ -493,6 +496,7 @@ impl Model {
 
 #[derive(Debug, PartialEq)]
 enum Effect {
+    SeekConfirmation(Operation),
     CloseConfirmationModal,
     StageOperation(Operation),
     Exit,
@@ -559,7 +563,7 @@ fn keypress(
     }
     match action_state {
         ActionState::Navigating => keypress_while_navigating(plan, navigation, key),
-        ActionState::Confirming => keypress_while_confirming(plan, navigation, key),
+        ActionState::Confirming(_) => keypress_while_confirming(plan, navigation, key),
         ActionState::Exiting => unreachable!(),
     }
 }
@@ -986,6 +990,18 @@ mod tests {
         let mut model = Model::new();
         model.accept(Effect::Exit);
         assert_eq!(ActionState::Exiting, model.action_state);
+    }
+
+    #[test]
+    fn seek_confirmation_effect_puts_model_in_confirming_state() {
+        let mut model = Model::new();
+        model.accept(Effect::SeekConfirmation(Operation::Remove(
+            "address".to_string(),
+        )));
+        assert_eq!(
+            ActionState::Confirming(Operation::Remove("address".to_string())),
+            model.action_state
+        );
     }
 
     #[test]
