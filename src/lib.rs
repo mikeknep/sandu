@@ -78,7 +78,8 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
             .next()
             .ok_or_else(|| SanduError::new("Error during keypress event"))??;
         let (new_state, effect) = handle_keypress(&plan, &model.state, key);
-        model.accept(new_state, effect);
+        model.state = new_state;
+        model.accept(effect);
     }
     Ok(())
 }
@@ -426,7 +427,15 @@ pub trait Filesystem {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+enum ActionState {
+    Navigating,
+    Confirming,
+    Exiting,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Model {
+    action_state: ActionState,
     staged_operations: Vec<Operation>,
     state: State,
 }
@@ -434,6 +443,7 @@ struct Model {
 impl Model {
     fn new() -> Self {
         Model {
+            action_state: ActionState::Navigating,
             staged_operations: vec![],
             state: State::ChoosingType(ChoosingType { selected: None }),
         }
@@ -443,10 +453,10 @@ impl Model {
         self.state != State::Finished
     }
 
-    fn accept(&mut self, state: State, effect: Effect) {
-        self.state = state;
+    fn accept(&mut self, effect: Effect) {
         match effect {
             Effect::StageOperation(operation) => self.staged_operations.push(operation),
+            Effect::Exit => self.action_state = ActionState::Exiting,
             Effect::NoOp => {}
         }
     }
@@ -454,6 +464,7 @@ impl Model {
 
 #[derive(Debug, PartialEq)]
 enum Effect {
+    Exit,
     StageOperation(Operation),
     NoOp,
 }
@@ -909,24 +920,20 @@ mod tests {
     }
 
     #[test]
-    fn model_accepts_new_states() {
+    fn exit_effect_puts_model_in_exiting_action_state() {
         let mut model = Model::new();
-        let new_state = State::ChoosingType(ChoosingType {
-            selected: Some(100),
-        });
-        model.accept(new_state.clone(), Effect::NoOp);
-
-        assert_eq!(new_state, model.state);
+        model.accept(Effect::Exit);
+        assert_eq!(ActionState::Exiting, model.action_state);
     }
 
     #[test]
     fn no_op_effect_does_not_alter_model() {
         let original_model = Model::new();
-        let mut model = original_model.clone();
+        let mut unaltered_model = original_model.clone();
 
-        model.accept(original_model.state.clone(), Effect::NoOp);
+        unaltered_model.accept(Effect::NoOp);
 
-        assert_eq!(original_model, model);
+        assert_eq!(original_model, unaltered_model);
     }
 
     #[test]
@@ -1543,14 +1550,13 @@ mod tests {
     #[test]
     fn accepting_a_stage_operation_effect_adds_the_operation_to_the_model() {
         let mut model = Model::new();
-        let new_state = State::ChoosingType(ChoosingType { selected: None });
         let operation = Operation::Move {
             from: "from".to_string(),
             to: "to".to_string(),
         };
         let stage_operation_effect = Effect::StageOperation(operation.clone());
 
-        model.accept(new_state, stage_operation_effect);
+        model.accept(stage_operation_effect);
 
         assert_eq!(1, model.staged_operations.len());
         assert_eq!(operation, model.staged_operations[0]);
