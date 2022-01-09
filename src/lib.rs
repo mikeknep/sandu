@@ -546,6 +546,18 @@ enum State {
     Finished,
 }
 
+fn keypress(
+    plan: &TerraformPlan,
+    action_state: &ActionState,
+    navigation: &Navigation,
+    key: Key,
+) -> (Navigation, Effect) {
+    if let Key::Esc = key {
+        return (navigation.clone(), Effect::Exit);
+    }
+    (navigation.clone(), Effect::NoOp)
+}
+
 fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (State, Effect) {
     if let Key::Char('q') = key {
         return (State::Finished, Effect::NoOp);
@@ -962,6 +974,17 @@ mod tests {
         unaltered_model.accept(Effect::NoOp);
 
         assert_eq!(original_model, unaltered_model);
+    }
+
+    #[test]
+    fn esc_sends_exit_effect() {
+        let (_, effect) = keypress(
+            &simple_plan(1),
+            &ActionState::Navigating,
+            &Navigation::default(),
+            Key::Esc,
+        );
+        assert_eq!(Effect::Exit, effect);
     }
 
     #[test]
