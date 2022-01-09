@@ -555,6 +555,26 @@ fn keypress(
     if let Key::Esc = key {
         return (navigation.clone(), Effect::Exit);
     }
+    match action_state {
+        ActionState::Navigating => keypress_while_navigating(plan, navigation, key),
+        ActionState::Confirming => keypress_while_confirming(plan, navigation, key),
+        ActionState::Exiting => unreachable!(),
+    }
+}
+
+fn keypress_while_navigating(
+    plan: &TerraformPlan,
+    navigation: &Navigation,
+    key: Key,
+) -> (Navigation, Effect) {
+    (navigation.clone(), Effect::NoOp)
+}
+
+fn keypress_while_confirming(
+    plan: &TerraformPlan,
+    navigation: &Navigation,
+    key: Key,
+) -> (Navigation, Effect) {
     (navigation.clone(), Effect::NoOp)
 }
 
