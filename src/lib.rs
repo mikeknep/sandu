@@ -1653,10 +1653,4 @@ mod tests {
             effect
         );
     }
-
-    #[test]
-    #[ignore]
-    fn confirming_a_state_move_progresses_to_the_next_state() {
-        todo!("Not sure where we'll go from here just yet!");
-    }
 }
