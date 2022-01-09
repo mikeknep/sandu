@@ -483,6 +483,7 @@ impl Model {
 
     fn accept(&mut self, effect: Effect) {
         match effect {
+            Effect::CloseConfirmationModal => self.action_state = ActionState::Navigating,
             Effect::StageOperation(operation) => self.staged_operations.push(operation),
             Effect::Exit => self.action_state = ActionState::Exiting,
             Effect::NoOp => {}
@@ -492,8 +493,9 @@ impl Model {
 
 #[derive(Debug, PartialEq)]
 enum Effect {
-    Exit,
+    CloseConfirmationModal,
     StageOperation(Operation),
+    Exit,
     NoOp,
 }
 
@@ -984,6 +986,30 @@ mod tests {
         let mut model = Model::new();
         model.accept(Effect::Exit);
         assert_eq!(ActionState::Exiting, model.action_state);
+    }
+
+    #[test]
+    fn close_confirmation_modal_effect_puts_model_in_navigating_state() {
+        let mut model = Model::new();
+        model.action_state = ActionState::Exiting;
+        model.accept(Effect::CloseConfirmationModal);
+
+        assert_eq!(ActionState::Navigating, model.action_state);
+    }
+
+    #[test]
+    fn accepting_a_stage_operation_effect_adds_the_operation_to_the_model() {
+        let mut model = Model::new();
+        let operation = Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        };
+        let stage_operation_effect = Effect::StageOperation(operation.clone());
+
+        model.accept(stage_operation_effect);
+
+        assert_eq!(1, model.staged_operations.len());
+        assert_eq!(operation, model.staged_operations[0]);
     }
 
     #[test]
@@ -1616,20 +1642,5 @@ mod tests {
     #[ignore]
     fn confirming_a_state_move_progresses_to_the_next_state() {
         todo!("Not sure where we'll go from here just yet!");
-    }
-
-    #[test]
-    fn accepting_a_stage_operation_effect_adds_the_operation_to_the_model() {
-        let mut model = Model::new();
-        let operation = Operation::Move {
-            from: "from".to_string(),
-            to: "to".to_string(),
-        };
-        let stage_operation_effect = Effect::StageOperation(operation.clone());
-
-        model.accept(stage_operation_effect);
-
-        assert_eq!(1, model.staged_operations.len());
-        assert_eq!(operation, model.staged_operations[0]);
     }
 }
