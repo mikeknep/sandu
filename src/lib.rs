@@ -563,7 +563,9 @@ fn keypress(
     }
     match action_state {
         ActionState::Navigating => keypress_while_navigating(plan, navigation, key),
-        ActionState::Confirming(_) => keypress_while_confirming(plan, navigation, key),
+        ActionState::Confirming(operation) => {
+            keypress_while_confirming(plan, navigation, operation, key)
+        }
         ActionState::Exiting => unreachable!(),
     }
 }
@@ -579,9 +581,77 @@ fn keypress_while_navigating(
 fn keypress_while_confirming(
     plan: &TerraformPlan,
     navigation: &Navigation,
+    operation: &Operation,
     key: Key,
 ) -> (Navigation, Effect) {
-    (navigation.clone(), Effect::NoOp)
+    match operation {
+        Operation::Import {
+            address,
+            identifier,
+        } => keypress_while_confirming_import(plan, navigation, address, identifier, key),
+        _ => {
+            match key {
+                Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
+                Key::Char('\n') => {
+                    // TODO: if staged resources are removed from lists,
+                    // the navigation needs to update in case the list index is now out of bounds
+                    let nav = navigation.clone();
+                    (nav, Effect::StageOperation(operation.clone()))
+                }
+                _ => (navigation.clone(), Effect::NoOp),
+            }
+        }
+    }
+}
+
+fn keypress_while_confirming_import(
+    plan: &TerraformPlan,
+    navigation: &Navigation,
+    address: &String,
+    identifier: &String,
+    key: Key,
+) -> (Navigation, Effect) {
+    match key {
+        Key::Char('\n') => {
+            // TODO: if staged resources are removed from lists,
+            // the navigation needs to update in case the list index is now out of bounds
+            (
+                navigation.clone(),
+                Effect::StageOperation(Operation::Import {
+                    address: address.clone(),
+                    identifier: identifier.clone(),
+                }),
+            )
+        }
+        Key::Backspace => match identifier.len() {
+            0 => (navigation.clone(), Effect::CloseConfirmationModal),
+            _ => {
+                let mut updated_identifier = identifier.clone();
+                updated_identifier.pop();
+                let updated_operation = Operation::Import {
+                    address: address.clone(),
+                    identifier: updated_identifier,
+                };
+                (
+                    navigation.clone(),
+                    Effect::SeekConfirmation(updated_operation),
+                )
+            }
+        },
+        Key::Char(c) => {
+            let mut updated_identifier = identifier.clone();
+            updated_identifier.push(c);
+            let updated_operation = Operation::Import {
+                address: address.clone(),
+                identifier: updated_identifier,
+            };
+            (
+                navigation.clone(),
+                Effect::SeekConfirmation(updated_operation),
+            )
+        }
+        _ => (navigation.clone(), Effect::NoOp),
+    }
 }
 
 fn handle_keypress(plan: &TerraformPlan, state: &State, key: Key) -> (State, Effect) {
@@ -1652,5 +1722,178 @@ mod tests {
             }),
             effect
         );
+    }
+
+    #[test]
+    fn while_confirming_remove_pressing_backspace_closes_modal() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Remove("address".to_string()));
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::CloseConfirmationModal, effect);
+    }
+
+    #[test]
+    fn while_confirming_remove_pressing_return_stages_operation() {
+        let plan = simple_plan(1);
+        let operation = Operation::Remove("address".to_string());
+        let action_state = ActionState::Confirming(operation.clone());
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::StageOperation(operation.clone()), effect);
+    }
+
+    #[test]
+    fn while_confirming_remove_pressing_other_characters_does_nothing() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Remove("address".to_string()));
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_confirming_move_pressing_backspace_closes_modal() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        });
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::CloseConfirmationModal, effect);
+    }
+
+    #[test]
+    fn while_confirming_move_pressing_return_stages_operation() {
+        let plan = simple_plan(1);
+        let operation = Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        };
+        let action_state = ActionState::Confirming(operation.clone());
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::StageOperation(operation.clone()), effect);
+    }
+
+    #[test]
+    fn while_confirming_move_pressing_other_characters_does_nothing() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        });
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_confirming_import_pressing_return_stages_operation() {
+        let plan = simple_plan(1);
+        let operation = Operation::Import {
+            address: "address".to_string(),
+            identifier: "identifier".to_string(),
+        };
+        let action_state = ActionState::Confirming(operation.clone());
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::StageOperation(operation.clone()), effect);
+    }
+
+    #[test]
+    fn while_confirming_import_pressing_backspace_deletes_from_identifier_if_present() {
+        let plan = simple_plan(1);
+        let operation = Operation::Import {
+            address: "address".to_string(),
+            identifier: "i".to_string(),
+        };
+        let action_state = ActionState::Confirming(operation);
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(
+            Effect::SeekConfirmation(Operation::Import {
+                address: "address".to_string(),
+                identifier: "".to_string(),
+            }),
+            effect
+        );
+    }
+
+    #[test]
+    fn while_confirming_import_pressing_backspace_closes_modal_if_identifier_is_empty() {
+        let plan = simple_plan(1);
+        let operation = Operation::Import {
+            address: "address".to_string(),
+            identifier: "".to_string(),
+        };
+        let action_state = ActionState::Confirming(operation);
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::CloseConfirmationModal, effect);
+    }
+
+    #[test]
+    fn while_confirming_import_pressing_a_character_appends_to_identifier() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Import {
+            address: "address".to_string(),
+            identifier: "".to_string(),
+        });
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(
+            Effect::SeekConfirmation(Operation::Import {
+                address: "address".to_string(),
+                identifier: "i".to_string(),
+            }),
+            effect
+        );
+    }
+
+    #[test]
+    fn while_confirming_import_pressing_other_keys_does_nothing() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Confirming(Operation::Import {
+            address: "address".to_string(),
+            identifier: "id".to_string(),
+        });
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
     }
 }
