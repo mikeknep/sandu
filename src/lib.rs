@@ -573,19 +573,14 @@ enum State {
     Finished,
 }
 
-fn keypress(
-    plan: &TerraformPlan,
-    action_state: &ActionState,
-    navigation: &Navigation,
-    key: Key,
-) -> (Navigation, Effect) {
+fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effect) {
     if let Key::Esc = key {
-        return (navigation.clone(), Effect::Exit);
+        return (model.navigation.clone(), Effect::Exit);
     }
-    match action_state {
-        ActionState::Navigating => keypress_while_navigating(plan, navigation, key),
+    match &model.action_state {
+        ActionState::Navigating => keypress_while_navigating(plan, &model.navigation, key),
         ActionState::Confirming(operation) => {
-            keypress_while_confirming(plan, navigation, operation, key)
+            keypress_while_confirming(plan, &model.navigation, operation, key)
         }
         ActionState::Exiting => unreachable!(),
     }
@@ -1278,12 +1273,7 @@ mod tests {
 
     #[test]
     fn esc_sends_exit_effect() {
-        let (_, effect) = keypress(
-            &simple_plan(1),
-            &ActionState::Navigating,
-            &Navigation::default(),
-            Key::Esc,
-        );
+        let (_, effect) = keypress(&simple_plan(1), &Model::new(), Key::Esc);
         assert_eq!(Effect::Exit, effect);
     }
 
@@ -1897,8 +1887,10 @@ mod tests {
         let plan = simple_plan(1);
         let action_state = ActionState::Confirming(Operation::Remove("address".to_string()));
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
@@ -1910,8 +1902,10 @@ mod tests {
         let operation = Operation::Remove("address".to_string());
         let action_state = ActionState::Confirming(operation.clone());
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
@@ -1922,8 +1916,10 @@ mod tests {
         let plan = simple_plan(1);
         let action_state = ActionState::Confirming(Operation::Remove("address".to_string()));
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+        let (nav, effect) = keypress(&plan, &model, Key::Left);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::NoOp, effect);
@@ -1937,8 +1933,10 @@ mod tests {
             to: "to".to_string(),
         });
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
@@ -1953,8 +1951,10 @@ mod tests {
         };
         let action_state = ActionState::Confirming(operation.clone());
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
@@ -1968,8 +1968,10 @@ mod tests {
             to: "to".to_string(),
         });
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+        let (nav, effect) = keypress(&plan, &model, Key::Left);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::NoOp, effect);
@@ -1984,8 +1986,10 @@ mod tests {
         };
         let action_state = ActionState::Confirming(operation.clone());
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('\n'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
@@ -2000,8 +2004,10 @@ mod tests {
         };
         let action_state = ActionState::Confirming(operation);
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
 
         assert_eq!(navigation, nav);
         assert_eq!(
@@ -2022,8 +2028,10 @@ mod tests {
         };
         let action_state = ActionState::Confirming(operation);
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
@@ -2037,8 +2045,10 @@ mod tests {
             identifier: "".to_string(),
         });
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('i'));
 
         assert_eq!(navigation, nav);
         assert_eq!(
@@ -2058,8 +2068,10 @@ mod tests {
             identifier: "id".to_string(),
         });
         let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Left);
+        let (nav, effect) = keypress(&plan, &model, Key::Left);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::NoOp, effect);
@@ -2068,14 +2080,15 @@ mod tests {
     #[test]
     fn while_navigating_pressing_i_seeks_confirmation_of_import_if_a_create_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.selected_type = Some(0);
         navigation.selected_create = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('i'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(
             Effect::SeekConfirmation(Operation::Import {
                 address: "0.0".to_string(),
@@ -2088,26 +2101,26 @@ mod tests {
     #[test]
     fn while_navigating_pressing_i_has_no_effect_if_a_create_is_not_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('i'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
     fn while_navigating_pressing_r_seeks_confirmation_of_removal_if_a_delete_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.selected_type = Some(0);
         navigation.selected_delete = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('r'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('r'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(
             Effect::SeekConfirmation(Operation::Remove("0.0".to_string())),
             effect
@@ -2117,27 +2130,27 @@ mod tests {
     #[test]
     fn while_navigating_pressing_r_has_no_effect_if_a_delete_is_not_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('r'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('r'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
     fn while_navigating_pressing_m_seeks_confirmation_of_move_if_create_and_delete_are_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.selected_type = Some(0);
         navigation.selected_delete = Some(0);
         navigation.selected_create = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('m'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('m'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(
             Effect::SeekConfirmation(Operation::Move {
                 from: "0.0".to_string(),
@@ -2150,28 +2163,28 @@ mod tests {
     #[test]
     fn while_navigating_pressing_m_has_no_effect_if_either_create_or_delete_is_not_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('m'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('m'));
 
-        assert_eq!(navigation, nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
     fn while_navigating_pressing_t_moves_to_types_list() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.active_list = NavigationList::StagedOperations;
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('t'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('t'));
 
         assert_eq!(
             Navigation {
                 active_list: NavigationList::Types,
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav
         );
@@ -2181,16 +2194,17 @@ mod tests {
     #[test]
     fn while_navigating_pressing_c_moves_to_create_list_if_type_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.selected_type = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('c'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('c'));
 
         assert_eq!(
             Navigation {
                 active_list: NavigationList::Create("0".to_string()),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav
         );
@@ -2200,28 +2214,28 @@ mod tests {
     #[test]
     fn while_navigating_pressing_c_does_nothing_if_no_type_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('c'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('c'));
 
-        assert_eq!(navigation.clone(), nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
     fn while_navigating_pressing_d_moves_to_delete_list_if_type_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.selected_type = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('d'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('d'));
 
         assert_eq!(
             Navigation {
                 active_list: NavigationList::Delete("0".to_string()),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav
         );
@@ -2231,27 +2245,25 @@ mod tests {
     #[test]
     fn while_navigating_pressing_d_does_nothing_if_no_type_is_selected() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('d'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('d'));
 
-        assert_eq!(navigation.clone(), nav);
+        assert_eq!(model.navigation, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
     fn while_navigating_pressing_s_moves_to_staged_operations_list() {
         let plan = simple_plan(1);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('s'));
+        let (nav, effect) = keypress(&plan, &model, Key::Char('s'));
 
         assert_eq!(
             Navigation {
                 active_list: NavigationList::StagedOperations,
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav
         );
@@ -2261,46 +2273,54 @@ mod tests {
     #[test]
     fn while_navigating_in_types_list_user_can_scroll_forward() {
         let plan = simple_plan(3);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav0, effect) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+        let (nav0, effect) = keypress(&plan, &model, Key::Char('j'));
 
         assert_eq!(
             Navigation {
                 selected_type: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
         assert_eq!(Effect::NoOp, effect);
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('n'));
 
         assert_eq!(
             Navigation {
                 selected_type: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav2, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_type: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_type: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
@@ -2309,46 +2329,54 @@ mod tests {
     #[test]
     fn while_navigating_in_types_list_user_can_scroll_backward() {
         let plan = simple_plan(3);
-        let action_state = ActionState::Navigating;
-        let navigation = Navigation::default();
+        let model = Model::new();
 
-        let (nav2, effect) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+        let (nav2, effect) = keypress(&plan, &model, Key::Char('k'));
 
         assert_eq!(
             Navigation {
                 selected_type: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
         assert_eq!(Effect::NoOp, effect);
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('p'));
 
         assert_eq!(
             Navigation {
                 selected_type: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav0, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_type: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_type: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
@@ -2368,46 +2396,56 @@ mod tests {
             r#type: "0".to_string(),
             preview: json!({}),
         });
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.active_list = NavigationList::Create("0".to_string());
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav0, _) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+        let (nav0, _) = keypress(&plan, &model, Key::Char('j'));
 
         assert_eq!(
             Navigation {
                 selected_create: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('n'));
 
         assert_eq!(
             Navigation {
                 selected_create: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav2, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_create: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_create: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
@@ -2427,46 +2465,56 @@ mod tests {
             r#type: "0".to_string(),
             preview: json!({}),
         });
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.active_list = NavigationList::Create("0".to_string());
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav2, _) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+        let (nav2, _) = keypress(&plan, &model, Key::Char('k'));
 
         assert_eq!(
             Navigation {
                 selected_create: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('p'));
 
         assert_eq!(
             Navigation {
                 selected_create: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav0, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_create: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_create: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
@@ -2487,46 +2535,56 @@ mod tests {
             preview: json!({}),
         });
 
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.active_list = NavigationList::Delete("0".to_string());
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav0, _) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+        let (nav0, _) = keypress(&plan, &model, Key::Char('j'));
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('n'));
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav2, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Down);
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
@@ -2547,46 +2605,56 @@ mod tests {
             preview: json!({}),
         });
 
-        let action_state = ActionState::Navigating;
         let mut navigation = Navigation::default();
         navigation.active_list = NavigationList::Delete("0".to_string());
+        let mut model = Model::new();
+        model.navigation = navigation;
 
-        let (nav2, _) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+        let (nav2, _) = keypress(&plan, &model, Key::Char('k'));
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav2
         );
 
-        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+        let mut model = Model::new();
+        model.navigation = nav2;
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('p'));
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(1),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav1
         );
 
-        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav1;
+
+        let (nav0, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(0),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav0
         );
 
-        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+        let mut model = Model::new();
+        model.navigation = nav0;
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Up);
 
         assert_eq!(
             Navigation {
                 selected_delete: Some(2),
-                ..navigation.clone()
+                ..model.navigation.clone()
             },
             nav_reset
         );
