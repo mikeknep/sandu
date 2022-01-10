@@ -633,8 +633,8 @@ fn keypress_while_navigating(
                 ),
             ) {
                 let operation = Operation::Move {
-                    from: from.address.clone(),
-                    to: to.address.clone(),
+                    from: from.address,
+                    to: to.address,
                 };
                 (navigation.clone(), Effect::SeekConfirmation(operation))
             } else {
@@ -648,7 +648,7 @@ fn keypress_while_navigating(
                 navigation.selected_type,
                 navigation.selected_delete,
             ) {
-                let operation = Operation::Remove(resource.address.clone());
+                let operation = Operation::Remove(resource.address);
                 (navigation.clone(), Effect::SeekConfirmation(operation))
             } else {
                 (navigation.clone(), Effect::NoOp)
@@ -662,7 +662,7 @@ fn keypress_while_navigating(
                 navigation.selected_create,
             ) {
                 let operation = Operation::Import {
-                    address: resource.address.clone(),
+                    address: resource.address,
                     identifier: "".to_string(),
                 };
                 (navigation.clone(), Effect::SeekConfirmation(operation))
@@ -685,7 +685,7 @@ fn scroll_next(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Ef
             (nav, Effect::NoOp)
         }
         NavigationList::Create(r#type) => {
-            let list_length = resources_of_type(&r#type, &plan.pending_creation).len();
+            let list_length = resources_of_type(r#type, &plan.pending_creation).len();
             let nav = Navigation {
                 selected_create: cycle_next(list_length, &navigation.selected_create),
                 ..navigation.clone()
@@ -693,7 +693,7 @@ fn scroll_next(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Ef
             (nav, Effect::NoOp)
         }
         NavigationList::Delete(r#type) => {
-            let list_length = resources_of_type(&r#type, &plan.pending_deletion).len();
+            let list_length = resources_of_type(r#type, &plan.pending_deletion).len();
             let nav = Navigation {
                 selected_delete: cycle_next(list_length, &navigation.selected_delete),
                 ..navigation.clone()
@@ -714,7 +714,7 @@ fn scroll_previous(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation
             (nav, Effect::NoOp)
         }
         NavigationList::Create(r#type) => {
-            let list_length = resources_of_type(&r#type, &plan.pending_creation).len();
+            let list_length = resources_of_type(r#type, &plan.pending_creation).len();
             let nav = Navigation {
                 selected_create: cycle_previous(list_length, &navigation.selected_create),
                 ..navigation.clone()
@@ -722,7 +722,7 @@ fn scroll_previous(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation
             (nav, Effect::NoOp)
         }
         NavigationList::Delete(r#type) => {
-            let list_length = resources_of_type(&r#type, &plan.pending_deletion).len();
+            let list_length = resources_of_type(r#type, &plan.pending_deletion).len();
             let nav = Navigation {
                 selected_delete: cycle_previous(list_length, &navigation.selected_delete),
                 ..navigation.clone()
@@ -770,8 +770,8 @@ fn keypress_while_confirming(
 fn keypress_while_confirming_import(
     plan: &TerraformPlan,
     navigation: &Navigation,
-    address: &String,
-    identifier: &String,
+    address: &str,
+    identifier: &str,
     key: Key,
 ) -> (Navigation, Effect) {
     match key {
@@ -781,18 +781,18 @@ fn keypress_while_confirming_import(
             (
                 navigation.clone(),
                 Effect::StageOperation(Operation::Import {
-                    address: address.clone(),
-                    identifier: identifier.clone(),
+                    address: address.to_string(),
+                    identifier: identifier.to_string(),
                 }),
             )
         }
         Key::Backspace => match identifier.len() {
             0 => (navigation.clone(), Effect::CloseConfirmationModal),
             _ => {
-                let mut updated_identifier = identifier.clone();
+                let mut updated_identifier = identifier.to_string();
                 updated_identifier.pop();
                 let updated_operation = Operation::Import {
-                    address: address.clone(),
+                    address: address.to_string(),
                     identifier: updated_identifier,
                 };
                 (
@@ -802,10 +802,10 @@ fn keypress_while_confirming_import(
             }
         },
         Key::Char(c) => {
-            let mut updated_identifier = identifier.clone();
+            let mut updated_identifier = identifier.to_string();
             updated_identifier.push(c);
             let updated_operation = Operation::Import {
-                address: address.clone(),
+                address: address.to_string(),
                 identifier: updated_identifier,
             };
             (
