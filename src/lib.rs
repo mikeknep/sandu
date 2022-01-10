@@ -578,7 +578,9 @@ fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effec
         return (model.navigation.clone(), Effect::Exit);
     }
     match &model.action_state {
-        ActionState::Navigating => keypress_while_navigating(plan, &model.navigation, key),
+        ActionState::Navigating => {
+            keypress_while_navigating(plan, &model.navigation, &model.staged_operations, key)
+        }
         ActionState::Confirming(operation) => {
             keypress_while_confirming(plan, &model.navigation, operation, key)
         }
@@ -589,12 +591,13 @@ fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effec
 fn keypress_while_navigating(
     plan: &TerraformPlan,
     navigation: &Navigation,
+    operations: &[Operation],
     key: Key,
 ) -> (Navigation, Effect) {
     match key {
         // scroll through active list
-        Key::Char('j') | Key::Down | Key::Ctrl('n') => scroll_next(plan, navigation),
-        Key::Char('k') | Key::Up | Key::Ctrl('p') => scroll_previous(plan, navigation),
+        Key::Char('j') | Key::Down | Key::Ctrl('n') => scroll_next(plan, navigation, operations),
+        Key::Char('k') | Key::Up | Key::Ctrl('p') => scroll_previous(plan, navigation, operations),
 
         // change the active list
         Key::Char('t') => move_to(navigation, NavigationList::Types),
@@ -675,7 +678,11 @@ fn keypress_while_navigating(
     }
 }
 
-fn scroll_next(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Effect) {
+fn scroll_next(
+    plan: &TerraformPlan,
+    navigation: &Navigation,
+    operations: &[Operation],
+) -> (Navigation, Effect) {
     match &navigation.active_list {
         NavigationList::Types => {
             let nav = Navigation {
@@ -700,11 +707,21 @@ fn scroll_next(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Ef
             };
             (nav, Effect::NoOp)
         }
-        _ => (navigation.clone(), Effect::NoOp),
+        NavigationList::StagedOperations => {
+            let nav = Navigation {
+                selected_operation: cycle_next(operations.len(), &navigation.selected_operation),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
     }
 }
 
-fn scroll_previous(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Effect) {
+fn scroll_previous(
+    plan: &TerraformPlan,
+    navigation: &Navigation,
+    operations: &[Operation],
+) -> (Navigation, Effect) {
     match &navigation.active_list {
         NavigationList::Types => {
             let nav = Navigation {
@@ -729,7 +746,16 @@ fn scroll_previous(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation
             };
             (nav, Effect::NoOp)
         }
-        _ => (navigation.clone(), Effect::NoOp),
+        NavigationList::StagedOperations => {
+            let nav = Navigation {
+                selected_operation: cycle_previous(
+                    operations.len(),
+                    &navigation.selected_operation,
+                ),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
     }
 }
 
@@ -2661,14 +2687,139 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn while_navigating_in_staged_operations_list_user_can_scroll_forward() {
-        todo!("Need access to operations for this");
+        let plan = simple_plan(1);
+        let staged_operations = vec![
+            Operation::Remove("a".to_string()),
+            Operation::Remove("b".to_string()),
+            Operation::Remove("c".to_string()),
+        ];
+        let mut model = Model::new();
+        model.navigation = Navigation {
+            active_list: NavigationList::StagedOperations,
+            ..model.navigation
+        };
+        model.staged_operations = staged_operations.clone();
+        let (nav0, effect) = keypress(&plan, &model, Key::Char('j'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(0),
+                ..model.navigation.clone()
+            },
+            nav0
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        let mut model = Model::new();
+        model.navigation = nav0;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(1),
+                ..model.navigation.clone()
+            },
+            nav1
+        );
+
+        let mut model = Model::new();
+        model.navigation = nav1;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav2, _) = keypress(&plan, &model, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(2),
+                ..model.navigation.clone()
+            },
+            nav2
+        );
+
+        let mut model = Model::new();
+        model.navigation = nav2;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(0),
+                ..model.navigation.clone()
+            },
+            nav_reset
+        );
     }
 
     #[test]
-    #[ignore]
     fn while_navigating_in_staged_operations_list_user_can_scroll_backward() {
-        todo!("Need access to operations for this");
+        let plan = simple_plan(1);
+        let staged_operations = vec![
+            Operation::Remove("a".to_string()),
+            Operation::Remove("b".to_string()),
+            Operation::Remove("c".to_string()),
+        ];
+        let mut model = Model::new();
+        model.navigation = Navigation {
+            active_list: NavigationList::StagedOperations,
+            ..model.navigation
+        };
+        model.staged_operations = staged_operations.clone();
+
+        let (nav2, effect) = keypress(&plan, &model, Key::Char('k'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(2),
+                ..model.navigation.clone()
+            },
+            nav2
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        let mut model = Model::new();
+        model.navigation = nav2;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav1, _) = keypress(&plan, &model, Key::Ctrl('p'));
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(1),
+                ..model.navigation.clone()
+            },
+            nav1
+        );
+
+        let mut model = Model::new();
+        model.navigation = nav1;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav0, _) = keypress(&plan, &model, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(0),
+                ..model.navigation.clone()
+            },
+            nav0
+        );
+
+        let mut model = Model::new();
+        model.navigation = nav0;
+        model.staged_operations = staged_operations.clone();
+
+        let (nav_reset, _) = keypress(&plan, &model, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_operation: Some(2),
+                ..model.navigation.clone()
+            },
+            nav_reset
+        );
     }
 }
