@@ -574,7 +574,7 @@ enum State {
 }
 
 fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effect) {
-    if let Key::Esc = key {
+    if let Key::Esc | Key::Char('q') = key {
         return (model.navigation.clone(), Effect::Exit);
     }
     match &model.action_state {
@@ -1300,6 +1300,12 @@ mod tests {
     #[test]
     fn esc_sends_exit_effect() {
         let (_, effect) = keypress(&simple_plan(1), &Model::new(), Key::Esc);
+        assert_eq!(Effect::Exit, effect);
+    }
+
+    #[test]
+    fn q_sends_exit_effect() {
+        let (_, effect) = keypress(&simple_plan(1), &Model::new(), Key::Char('q'));
         assert_eq!(Effect::Exit, effect);
     }
 
