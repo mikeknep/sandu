@@ -418,6 +418,24 @@ fn resources_of_type(t: &str, resources: &[TerraformResource]) -> Vec<TerraformR
         .collect()
 }
 
+fn selected_resource(
+    plan: &TerraformPlan,
+    action: TerraformAction,
+    selected_type_index: Option<usize>,
+    selected_resource_index: Option<usize>,
+) -> Option<TerraformResource> {
+    if let Some(i) = selected_type_index {
+        let resource_type = &plan.unique_types()[i];
+        let resources = match action {
+            TerraformAction::Create => &plan.pending_creation,
+            TerraformAction::Delete => &plan.pending_deletion,
+        };
+        selected_resource_index.map(|i| resources_of_type(resource_type, resources)[i].clone())
+    } else {
+        None
+    }
+}
+
 pub trait Terraform {
     fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>>;
 }
@@ -436,8 +454,9 @@ enum ActionState {
 #[derive(Clone, Debug, PartialEq)]
 enum NavigationList {
     Types,
-    Create,
-    Delete,
+    Create(String),
+    Delete(String),
+    StagedOperations,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -445,6 +464,7 @@ struct Navigation {
     selected_type: Option<usize>,
     selected_create: Option<usize>,
     selected_delete: Option<usize>,
+    selected_operation: Option<usize>,
     active_list: NavigationList,
 }
 
@@ -454,6 +474,7 @@ impl Navigation {
             selected_type: None,
             selected_create: None,
             selected_delete: None,
+            selected_operation: None,
             active_list: NavigationList::Types,
         }
     }
@@ -575,7 +596,154 @@ fn keypress_while_navigating(
     navigation: &Navigation,
     key: Key,
 ) -> (Navigation, Effect) {
-    (navigation.clone(), Effect::NoOp)
+    match key {
+        // scroll through active list
+        Key::Char('j') | Key::Down | Key::Ctrl('n') => scroll_next(plan, navigation),
+        Key::Char('k') | Key::Up | Key::Ctrl('p') => scroll_previous(plan, navigation),
+
+        // change the active list
+        Key::Char('t') => move_to(navigation, NavigationList::Types),
+        Key::Char('s') => move_to(navigation, NavigationList::StagedOperations),
+        Key::Char('c') => {
+            if let Some(i) = navigation.selected_type {
+                let active_type = plan.unique_types()[i].clone();
+                move_to(navigation, NavigationList::Create(active_type))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+        Key::Char('d') => {
+            if let Some(i) = navigation.selected_type {
+                let active_type = plan.unique_types()[i].clone();
+                move_to(navigation, NavigationList::Delete(active_type))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+
+        // begin confirming an operation
+        Key::Char('m') => {
+            if let (Some(from), Some(to)) = (
+                selected_resource(
+                    plan,
+                    TerraformAction::Delete,
+                    navigation.selected_type,
+                    navigation.selected_delete,
+                ),
+                selected_resource(
+                    plan,
+                    TerraformAction::Create,
+                    navigation.selected_type,
+                    navigation.selected_create,
+                ),
+            ) {
+                let operation = Operation::Move {
+                    from: from.address.clone(),
+                    to: to.address.clone(),
+                };
+                (navigation.clone(), Effect::SeekConfirmation(operation))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+        Key::Char('r') => {
+            if let Some(resource) = selected_resource(
+                plan,
+                TerraformAction::Delete,
+                navigation.selected_type,
+                navigation.selected_delete,
+            ) {
+                let operation = Operation::Remove(resource.address.clone());
+                (navigation.clone(), Effect::SeekConfirmation(operation))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+        Key::Char('i') => {
+            if let Some(resource) = selected_resource(
+                plan,
+                TerraformAction::Create,
+                navigation.selected_type,
+                navigation.selected_create,
+            ) {
+                let operation = Operation::Import {
+                    address: resource.address.clone(),
+                    identifier: "".to_string(),
+                };
+                (navigation.clone(), Effect::SeekConfirmation(operation))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+
+        _ => (navigation.clone(), Effect::NoOp),
+    }
+}
+
+fn scroll_next(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Effect) {
+    match &navigation.active_list {
+        NavigationList::Types => {
+            let nav = Navigation {
+                selected_type: cycle_next(plan.unique_types().len(), &navigation.selected_type),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Create(r#type) => {
+            let list_length = resources_of_type(&r#type, &plan.pending_creation).len();
+            let nav = Navigation {
+                selected_create: cycle_next(list_length, &navigation.selected_create),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Delete(r#type) => {
+            let list_length = resources_of_type(&r#type, &plan.pending_deletion).len();
+            let nav = Navigation {
+                selected_delete: cycle_next(list_length, &navigation.selected_delete),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        _ => (navigation.clone(), Effect::NoOp),
+    }
+}
+
+fn scroll_previous(plan: &TerraformPlan, navigation: &Navigation) -> (Navigation, Effect) {
+    match &navigation.active_list {
+        NavigationList::Types => {
+            let nav = Navigation {
+                selected_type: cycle_previous(plan.unique_types().len(), &navigation.selected_type),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Create(r#type) => {
+            let list_length = resources_of_type(&r#type, &plan.pending_creation).len();
+            let nav = Navigation {
+                selected_create: cycle_previous(list_length, &navigation.selected_create),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Delete(r#type) => {
+            let list_length = resources_of_type(&r#type, &plan.pending_deletion).len();
+            let nav = Navigation {
+                selected_delete: cycle_previous(list_length, &navigation.selected_delete),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        _ => (navigation.clone(), Effect::NoOp),
+    }
+}
+
+fn move_to(navigation: &Navigation, list: NavigationList) -> (Navigation, Effect) {
+    let nav = Navigation {
+        active_list: list,
+        ..navigation.clone()
+    };
+    (nav, Effect::NoOp)
 }
 
 fn keypress_while_confirming(
@@ -1895,5 +2063,544 @@ mod tests {
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_i_seeks_confirmation_of_import_if_a_create_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+        navigation.selected_create = Some(0);
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(
+            Effect::SeekConfirmation(Operation::Import {
+                address: "0.0".to_string(),
+                identifier: "".to_string(),
+            }),
+            effect
+        );
+    }
+
+    #[test]
+    fn while_navigating_pressing_i_has_no_effect_if_a_create_is_not_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('i'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_r_seeks_confirmation_of_removal_if_a_delete_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+        navigation.selected_delete = Some(0);
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('r'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(
+            Effect::SeekConfirmation(Operation::Remove("0.0".to_string())),
+            effect
+        );
+    }
+
+    #[test]
+    fn while_navigating_pressing_r_has_no_effect_if_a_delete_is_not_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('r'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_m_seeks_confirmation_of_move_if_create_and_delete_are_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+        navigation.selected_delete = Some(0);
+        navigation.selected_create = Some(0);
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('m'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(
+            Effect::SeekConfirmation(Operation::Move {
+                from: "0.0".to_string(),
+                to: "0.0".to_string(),
+            }),
+            effect
+        );
+    }
+
+    #[test]
+    fn while_navigating_pressing_m_has_no_effect_if_either_create_or_delete_is_not_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('m'));
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_t_moves_to_types_list() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::StagedOperations;
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('t'));
+
+        assert_eq!(
+            Navigation {
+                active_list: NavigationList::Types,
+                ..navigation.clone()
+            },
+            nav
+        );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_c_moves_to_create_list_if_type_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('c'));
+
+        assert_eq!(
+            Navigation {
+                active_list: NavigationList::Create("0".to_string()),
+                ..navigation.clone()
+            },
+            nav
+        );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_c_does_nothing_if_no_type_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('c'));
+
+        assert_eq!(navigation.clone(), nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_d_moves_to_delete_list_if_type_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('d'));
+
+        assert_eq!(
+            Navigation {
+                active_list: NavigationList::Delete("0".to_string()),
+                ..navigation.clone()
+            },
+            nav
+        );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_d_does_nothing_if_no_type_is_selected() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('d'));
+
+        assert_eq!(navigation.clone(), nav);
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_s_moves_to_staged_operations_list() {
+        let plan = simple_plan(1);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav, effect) = keypress(&plan, &action_state, &navigation, Key::Char('s'));
+
+        assert_eq!(
+            Navigation {
+                active_list: NavigationList::StagedOperations,
+                ..navigation.clone()
+            },
+            nav
+        );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_in_types_list_user_can_scroll_forward() {
+        let plan = simple_plan(3);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav0, effect) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(0),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    fn while_navigating_in_types_list_user_can_scroll_backward() {
+        let plan = simple_plan(3);
+        let action_state = ActionState::Navigating;
+        let navigation = Navigation::default();
+
+        let (nav2, effect) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_type: Some(2),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    fn while_navigating_in_create_list_user_can_scroll_forward() {
+        let mut plan = simple_plan(1);
+        // add two more resources pending creation, for a total of 3
+        plan.pending_creation.push(TerraformResource {
+            address: "0.1".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        plan.pending_creation.push(TerraformResource {
+            address: "0.2".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::Create("0".to_string());
+
+        let (nav0, _) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(0),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    fn while_navigating_in_create_list_user_can_scroll_backward() {
+        let mut plan = simple_plan(1);
+        // add two more resources pending creation, for a total of 3
+        plan.pending_creation.push(TerraformResource {
+            address: "0.1".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        plan.pending_creation.push(TerraformResource {
+            address: "0.2".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::Create("0".to_string());
+
+        let (nav2, _) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_create: Some(2),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    fn while_navigating_in_delete_list_user_can_scroll_forward() {
+        let mut plan = simple_plan(1);
+        // add two more resources pending deletion, for a total of 3
+        plan.pending_deletion.push(TerraformResource {
+            address: "0.1".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        plan.pending_deletion.push(TerraformResource {
+            address: "0.2".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::Delete("0".to_string());
+
+        let (nav0, _) = keypress(&plan, &action_state, &navigation, Key::Char('j'));
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav0, Key::Ctrl('n'));
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav2, _) = keypress(&plan, &action_state, &nav1, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav2, Key::Down);
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(0),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    fn while_navigating_in_delete_list_user_can_scroll_backward() {
+        let mut plan = simple_plan(1);
+        // add two more resources pending deletion, for a total of 3
+        plan.pending_deletion.push(TerraformResource {
+            address: "0.1".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+        plan.pending_deletion.push(TerraformResource {
+            address: "0.2".to_string(),
+            r#type: "0".to_string(),
+            preview: json!({}),
+        });
+
+        let action_state = ActionState::Navigating;
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::Delete("0".to_string());
+
+        let (nav2, _) = keypress(&plan, &action_state, &navigation, Key::Char('k'));
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(2),
+                ..navigation.clone()
+            },
+            nav2
+        );
+
+        let (nav1, _) = keypress(&plan, &action_state, &nav2, Key::Ctrl('p'));
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(1),
+                ..navigation.clone()
+            },
+            nav1
+        );
+
+        let (nav0, _) = keypress(&plan, &action_state, &nav1, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(0),
+                ..navigation.clone()
+            },
+            nav0
+        );
+
+        let (nav_reset, _) = keypress(&plan, &action_state, &nav0, Key::Up);
+
+        assert_eq!(
+            Navigation {
+                selected_delete: Some(2),
+                ..navigation.clone()
+            },
+            nav_reset
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn while_navigating_in_staged_operations_list_user_can_scroll_forward() {
+        todo!("Need access to operations for this");
+    }
+
+    #[test]
+    #[ignore]
+    fn while_navigating_in_staged_operations_list_user_can_scroll_backward() {
+        todo!("Need access to operations for this");
     }
 }
