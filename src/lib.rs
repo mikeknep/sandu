@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
 use std::io;
+use std::mem;
 use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
@@ -154,6 +155,7 @@ where
             types_list_items,
             "Types".to_string(),
             model.navigation.selected_type,
+            model.navigation.active_list.is_types_list(),
         );
         f.render_stateful_widget(types_list, types_list_pane, &mut types_list_state);
 
@@ -166,6 +168,7 @@ where
             staged_operations_list_items,
             "Staged operations".to_string(),
             model.navigation.selected_operation,
+            model.navigation.active_list.is_staged_operations_list(),
         );
         f.render_stateful_widget(
             staged_operations_list,
@@ -201,11 +204,13 @@ where
                 deleting_list_items,
                 "Deleting".to_string(),
                 model.navigation.selected_delete,
+                model.navigation.active_list.is_delete_list(),
             );
             let (creating_list, mut creating_list_state) = tui_list_for(
                 creating_list_items,
                 "Creating".to_string(),
                 model.navigation.selected_create,
+                model.navigation.active_list.is_create_list(),
             );
 
             f.render_stateful_widget(deleting_list, deleting_list_pane, &mut deleting_list_state);
@@ -252,9 +257,24 @@ Exit with q or Esc"
     }
 }
 
-fn tui_list_for(items: Vec<ListItem>, title: String, selected: Option<usize>) -> (List, ListState) {
+fn tui_list_for(
+    items: Vec<ListItem>,
+    title: String,
+    selected: Option<usize>,
+    is_active: bool,
+) -> (List, ListState) {
+    let border_color = if is_active {
+        Color::Yellow
+    } else {
+        Color::Gray
+    };
     let list = List::new(items)
-        .block(Block::default().title(title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color)),
+        )
         .highlight_style(Style::default().bg(Color::Green));
     let mut list_state = ListState::default();
     list_state.select(selected);
@@ -415,6 +435,26 @@ enum NavigationList {
     Create(String),
     Delete(String),
     StagedOperations,
+}
+
+impl NavigationList {
+    fn is_types_list(&self) -> bool {
+        std::mem::discriminant(self) == self::mem::discriminant(&NavigationList::Types)
+    }
+
+    fn is_create_list(&self) -> bool {
+        std::mem::discriminant(self)
+            == self::mem::discriminant(&NavigationList::Create("".to_string()))
+    }
+
+    fn is_delete_list(&self) -> bool {
+        std::mem::discriminant(self)
+            == self::mem::discriminant(&NavigationList::Delete("".to_string()))
+    }
+
+    fn is_staged_operations_list(&self) -> bool {
+        std::mem::discriminant(self) == self::mem::discriminant(&NavigationList::StagedOperations)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
