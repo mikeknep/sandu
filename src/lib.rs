@@ -173,7 +173,7 @@ where
             &mut staged_operations_list_state,
         );
 
-        let help_text = contextual_help_text(&model);
+        let help_text = contextual_help_text(model);
         f.render_widget(
             Paragraph::new(help_text).block(
                 Block::default()
