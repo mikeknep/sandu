@@ -92,7 +92,159 @@ fn draw<B>(
 where
     B: Backend,
 {
+    terminal.draw(|f| {
+        // Establish the basic visual layout of panes
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(
+                [
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(30),
+                    Constraint::Percentage(30),
+                ]
+                .as_ref(),
+            )
+            .split(f.size());
+        let left_pane = panes[0];
+        let deleting_pane = panes[1];
+        let creating_pane = panes[2];
+
+        let left_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(20),
+                ]
+                .as_ref(),
+            )
+            .split(left_pane);
+        let types_list_pane = left_panes[0];
+        let staged_operations_list_pane = left_panes[1];
+        let help_pane = left_panes[2];
+
+        let deleting_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)].as_ref())
+            .split(deleting_pane);
+        let deleting_list_pane = deleting_panes[0];
+        let deleting_preview_pane = deleting_panes[1];
+
+        let creating_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)].as_ref())
+            .split(creating_pane);
+        let creating_list_pane = creating_panes[0];
+        let creating_preview_pane = creating_panes[1];
+
+        // Populate panes with content
+
+        let types_list_items: Vec<ListItem> = plan
+            .unique_types()
+            .iter()
+            .map(|t| ListItem::new(Span::raw(t.clone())))
+            .collect();
+        let (types_list, mut types_list_state) = tui_list_for(
+            types_list_items,
+            "Types".to_string(),
+            model.navigation.selected_type,
+        );
+        f.render_stateful_widget(types_list, types_list_pane, &mut types_list_state);
+
+        let staged_operations_list_items: Vec<ListItem> = model
+            .staged_operations
+            .iter()
+            .map(|o| ListItem::new(Span::raw(o.to_string())))
+            .collect();
+        let (staged_operations_list, mut staged_operations_list_state) = tui_list_for(
+            staged_operations_list_items,
+            "Staged operations".to_string(),
+            model.navigation.selected_operation,
+        );
+        f.render_stateful_widget(
+            staged_operations_list,
+            staged_operations_list_pane,
+            &mut staged_operations_list_state,
+        );
+
+        let help_text = contextual_help_text(&model);
+        f.render_widget(
+            Paragraph::new(help_text).block(
+                Block::default()
+                    .title("Help".to_string())
+                    .borders(Borders::ALL),
+            ),
+            help_pane,
+        );
+
+        if let Some(selected_type_index) = model.navigation.selected_type {
+            let active_type = plan.unique_types()[selected_type_index].clone();
+            let pending_deletion = resources_of_type(&active_type, &plan.pending_deletion);
+            let pending_creation = resources_of_type(&active_type, &plan.pending_creation);
+
+            let deleting_list_items: Vec<ListItem> = pending_deletion
+                .iter()
+                .map(|r| ListItem::new(Span::raw(r.address.clone())))
+                .collect();
+            let creating_list_items: Vec<ListItem> = pending_creation
+                .iter()
+                .map(|r| ListItem::new(Span::raw(r.address.clone())))
+                .collect();
+
+            let (deleting_list, mut deleting_list_state) = tui_list_for(
+                deleting_list_items,
+                "Deleting".to_string(),
+                model.navigation.selected_delete,
+            );
+            let (creating_list, mut creating_list_state) = tui_list_for(
+                creating_list_items,
+                "Creating".to_string(),
+                model.navigation.selected_create,
+            );
+
+            f.render_stateful_widget(deleting_list, deleting_list_pane, &mut deleting_list_state);
+            f.render_stateful_widget(creating_list, creating_list_pane, &mut creating_list_state);
+
+            // previews
+            if let Some(selected_delete_index) = model.navigation.selected_delete {
+                let delete_resource = &pending_deletion[selected_delete_index];
+                let delete_preview =
+                    serde_json::to_string_pretty(&delete_resource.preview).unwrap();
+                f.render_widget(
+                    Paragraph::new(delete_preview).block(Block::default().borders(Borders::ALL)),
+                    deleting_preview_pane,
+                );
+            }
+            if let Some(selected_create_index) = model.navigation.selected_create {
+                let create_resource = &pending_creation[selected_create_index];
+                let create_preview =
+                    serde_json::to_string_pretty(&create_resource.preview).unwrap();
+                f.render_widget(
+                    Paragraph::new(create_preview).block(Block::default().borders(Borders::ALL)),
+                    creating_preview_pane,
+                );
+            }
+        }
+    })?;
     Ok(())
+}
+
+fn contextual_help_text(model: &Model) -> String {
+    match &model.action_state {
+        ActionState::Navigating => "
+Move to:                                Stage an operation:
+(t) Types list                          (i) Import
+(s) Staged operations list              (m) Move
+(d) Deleting resources list             (r) Remove
+(c) Creating resources list
+
+Scroll with j/k, up/down arrows, or ctrl-n/p
+
+Exit with q or Esc"
+            .to_string(),
+        _ => "Help text not yet available for this state".to_string(),
+    }
 }
 
 fn tui_list_for(items: Vec<ListItem>, title: String, selected: Option<usize>) -> (List, ListState) {
@@ -636,6 +788,21 @@ enum Operation {
     Move { from: String, to: String },
     Import { address: String, identifier: String },
     Remove(String),
+}
+
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operation::Move { from, to } => write!(f, "terraform state mv {} {}", from, to),
+            Operation::Import {
+                address,
+                identifier,
+            } => {
+                write!(f, "terraform import {} {}", address, identifier)
+            }
+            Operation::Remove(address) => write!(f, "terraform state rm {}", address),
+        }
+    }
 }
 
 #[cfg(test)]
