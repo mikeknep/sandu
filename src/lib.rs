@@ -505,6 +505,9 @@ impl Model {
                 self.staged_operations.push(operation);
                 self.action_state = ActionState::Navigating;
             }
+            Effect::UnstageOperation(index) => {
+                self.staged_operations.remove(index);
+            }
             Effect::Exit => self.action_state = ActionState::Exiting,
             Effect::NoOp => {}
         }
@@ -516,6 +519,7 @@ enum Effect {
     SeekConfirmation(Operation),
     CloseConfirmationModal,
     StageOperation(Operation),
+    UnstageOperation(usize),
     Exit,
     NoOp,
 }
@@ -625,6 +629,21 @@ fn keypress_while_navigating(
                     identifier: "".to_string(),
                 };
                 (navigation.clone(), Effect::SeekConfirmation(operation))
+            } else {
+                (navigation.clone(), Effect::NoOp)
+            }
+        }
+
+        // unstage an operation
+        Key::Delete => {
+            if let (NavigationList::StagedOperations, Some(index)) =
+                (&navigation.active_list, &navigation.selected_operation)
+            {
+                let nav = Navigation {
+                    selected_operation: None,
+                    ..navigation.clone()
+                };
+                (nav, Effect::UnstageOperation(*index))
             } else {
                 (navigation.clone(), Effect::NoOp)
             }
@@ -1074,6 +1093,27 @@ mod tests {
         model.accept(stage_operation_effect);
 
         assert_eq!(ActionState::Navigating, model.action_state);
+    }
+
+    #[test]
+    fn accepting_an_unstage_operation_effect_removes_operation_from_model() {
+        let operations = vec![
+            Operation::Remove("a".to_string()),
+            Operation::Remove("b".to_string()),
+            Operation::Remove("c".to_string()),
+        ];
+        let mut model = Model::new();
+        model.staged_operations = operations;
+
+        model.accept(Effect::UnstageOperation(1));
+
+        assert_eq!(
+            vec![
+                Operation::Remove("a".to_string()),
+                Operation::Remove("c".to_string()),
+            ],
+            model.staged_operations
+        );
     }
 
     #[test]
@@ -2120,6 +2160,62 @@ mod tests {
             },
             nav
         );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_staged_operations_with_an_operation_selected_pressing_delete_unstages_an_operation(
+    ) {
+        let plan = simple_plan(1);
+        let mut navigation = Navigation::default();
+        navigation.active_list = NavigationList::StagedOperations;
+        navigation.selected_operation = Some(1);
+        let mut model = Model::new();
+        model.navigation = navigation.clone();
+
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
+
+        assert_eq!(
+            Navigation {
+                selected_operation: None,
+                ..navigation
+            },
+            nav
+        );
+        assert_eq!(Effect::UnstageOperation(1), effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_delete_has_no_effect_when_browsing_other_lists_or_no_operation_is_selected(
+    ) {
+        let plan = simple_plan(1);
+        let navigation = Navigation::default();
+        let mut model = Model::new();
+        model.navigation = navigation.clone();
+
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
+
+        assert_eq!(navigation.clone(), nav);
+        assert_eq!(Effect::NoOp, effect);
+
+        let correct_list_no_selection_nav = Navigation {
+            active_list: NavigationList::StagedOperations,
+            ..navigation.clone()
+        };
+        model.navigation = correct_list_no_selection_nav.clone();
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
+
+        assert_eq!(correct_list_no_selection_nav, nav);
+        assert_eq!(Effect::NoOp, effect);
+
+        let selection_but_incorrect_list_nav = Navigation {
+            selected_operation: Some(0),
+            ..navigation.clone()
+        };
+        model.navigation = selection_but_incorrect_list_nav.clone();
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
+
+        assert_eq!(selection_but_incorrect_list_nav, nav);
         assert_eq!(Effect::NoOp, effect);
     }
 }
