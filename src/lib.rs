@@ -555,6 +555,9 @@ fn keypress_while_navigating(
         Key::Char('j') | Key::Down | Key::Ctrl('n') => scroll_next(plan, navigation, operations),
         Key::Char('k') | Key::Up | Key::Ctrl('p') => scroll_previous(plan, navigation, operations),
 
+        // deselect from list
+        Key::Backspace => deselect_list_item(navigation),
+
         // change the active list
         Key::Char('t') => move_to(navigation, NavigationList::Types),
         Key::Char('s') => move_to(navigation, NavigationList::StagedOperations),
@@ -712,6 +715,41 @@ fn scroll_previous(
                     operations.len(),
                     &navigation.selected_operation,
                 ),
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+    }
+}
+
+fn deselect_list_item(navigation: &Navigation) -> (Navigation, Effect) {
+    match navigation.active_list {
+        NavigationList::Create(_) => {
+            let nav = Navigation {
+                selected_create: None,
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Delete(_) => {
+            let nav = Navigation {
+                selected_delete: None,
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::StagedOperations => {
+            let nav = Navigation {
+                selected_operation: None,
+                ..navigation.clone()
+            };
+            (nav, Effect::NoOp)
+        }
+        NavigationList::Types => {
+            let nav = Navigation {
+                selected_create: None,
+                selected_delete: None,
+                selected_type: None,
                 ..navigation.clone()
             };
             (nav, Effect::NoOp)
@@ -2005,5 +2043,86 @@ mod tests {
             },
             nav_reset
         );
+    }
+
+    #[test]
+    fn while_navigating_create_delete_or_staged_operations_lists_pressing_backspace_deselects_list_item(
+    ) {
+        let plan = simple_plan(1);
+        let mut fully_selected_nav = Navigation {
+            selected_type: Some(0),
+            selected_create: Some(0),
+            selected_delete: Some(0),
+            selected_operation: Some(0),
+            active_list: NavigationList::Create("0".to_string()),
+        };
+        let mut model = Model::new();
+        model.navigation = fully_selected_nav.clone();
+
+        let (nav_without_create, effect) = keypress(&plan, &model, Key::Backspace);
+
+        assert_eq!(
+            Navigation {
+                selected_create: None,
+                ..fully_selected_nav
+            },
+            nav_without_create
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        fully_selected_nav.active_list = NavigationList::Delete("0".to_string());
+        model.navigation = fully_selected_nav.clone();
+
+        let (nav_without_delete, effect) = keypress(&plan, &model, Key::Backspace);
+
+        assert_eq!(
+            Navigation {
+                selected_delete: None,
+                ..fully_selected_nav
+            },
+            nav_without_delete
+        );
+        assert_eq!(Effect::NoOp, effect);
+
+        fully_selected_nav.active_list = NavigationList::StagedOperations;
+        model.navigation = fully_selected_nav.clone();
+
+        let (nav_without_operation, effect) = keypress(&plan, &model, Key::Backspace);
+
+        assert_eq!(
+            Navigation {
+                selected_operation: None,
+                ..fully_selected_nav
+            },
+            nav_without_operation
+        );
+        assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_types_list_pressing_backspace_deselects_type_and_resources() {
+        let plan = simple_plan(1);
+        let fully_selected_nav = Navigation {
+            selected_type: Some(0),
+            selected_create: Some(0),
+            selected_delete: Some(0),
+            selected_operation: Some(0),
+            active_list: NavigationList::Types,
+        };
+        let mut model = Model::new();
+        model.navigation = fully_selected_nav.clone();
+
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
+
+        assert_eq!(
+            Navigation {
+                selected_type: None,
+                selected_create: None,
+                selected_delete: None,
+                ..fully_selected_nav.clone()
+            },
+            nav
+        );
+        assert_eq!(Effect::NoOp, effect);
     }
 }
