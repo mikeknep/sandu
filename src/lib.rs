@@ -3,7 +3,6 @@ use serde::Deserialize;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use std::mem;
 use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
@@ -439,21 +438,19 @@ enum NavigationList {
 
 impl NavigationList {
     fn is_types_list(&self) -> bool {
-        std::mem::discriminant(self) == self::mem::discriminant(&NavigationList::Types)
+        matches!(self, NavigationList::Types)
     }
 
     fn is_create_list(&self) -> bool {
-        std::mem::discriminant(self)
-            == self::mem::discriminant(&NavigationList::Create("".to_string()))
+        matches!(self, NavigationList::Create(_))
     }
 
     fn is_delete_list(&self) -> bool {
-        std::mem::discriminant(self)
-            == self::mem::discriminant(&NavigationList::Delete("".to_string()))
+        matches!(self, NavigationList::Delete(_))
     }
 
     fn is_staged_operations_list(&self) -> bool {
-        std::mem::discriminant(self) == self::mem::discriminant(&NavigationList::StagedOperations)
+        matches!(self, NavigationList::StagedOperations)
     }
 }
 
