@@ -10,10 +10,7 @@ use termion::raw::IntoRawMode;
 use tui::style::Color;
 use tui::style::Style;
 use tui::text::Span;
-use tui::widgets::List;
-use tui::widgets::ListItem;
-use tui::widgets::ListState;
-use tui::widgets::Paragraph;
+use tui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 use tui::{
     backend::{Backend, TermionBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -143,6 +140,8 @@ where
         let creating_list_pane = creating_panes[0];
         let creating_preview_pane = creating_panes[1];
 
+        let modal_pane = centered_rect(60, 20, f.size());
+
         // Populate panes with content
 
         let types_list_items: Vec<ListItem> = plan
@@ -235,8 +234,54 @@ where
                 );
             }
         }
+
+        // Populate modal
+        if let ActionState::Confirming(operation) = &model.action_state {
+            let confirmation_text = get_confirmation_text(operation);
+            let confirmation = Paragraph::new(confirmation_text)
+                .block(Block::default().title("Confirm").borders(Borders::ALL));
+            f.render_widget(Clear, modal_pane);
+            f.render_widget(confirmation, modal_pane);
+        }
     })?;
     Ok(())
+}
+
+fn get_confirmation_text(operation: &Operation) -> String {
+    match operation {
+        Operation::Remove(address) => format!("
+Confirm you are removing this resource from Terraform state (i.e. \"forgetting\" it without destroying it) to stage the operation below.
+
+Address: {}
+
+terraform state rm {}
+        ", address, address),
+        Operation::Import {
+            address,
+            identifier,
+        } => format!("
+Enter the resource identifier to stage the operation below to import the (existing) resource into Terraform and manage it going forward.
+
+
+Address:    {}
+
+Identifier: {}
+
+
+terraform import {} {}
+        ", address, identifier, address, identifier),
+        Operation::Move { from, to } => format!("
+Confirm resource address change to stage the operation below.
+
+
+From: {}
+
+To:   {}
+
+
+terraform state mv {} {}
+        ", from, to, from, to),
+    }
 }
 
 fn contextual_help_text(model: &Model) -> String {
