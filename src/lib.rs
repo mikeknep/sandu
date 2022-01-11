@@ -459,7 +459,10 @@ impl Model {
                 self.action_state = ActionState::Confirming(operation)
             }
             Effect::CloseConfirmationModal => self.action_state = ActionState::Navigating,
-            Effect::StageOperation(operation) => self.staged_operations.push(operation),
+            Effect::StageOperation(operation) => {
+                self.staged_operations.push(operation);
+                self.action_state = ActionState::Navigating;
+            }
             Effect::Exit => self.action_state = ActionState::Exiting,
             Effect::NoOp => {}
         }
@@ -972,6 +975,21 @@ mod tests {
 
         assert_eq!(1, model.staged_operations.len());
         assert_eq!(operation, model.staged_operations[0]);
+    }
+
+    #[test]
+    fn accepting_a_stage_operation_effect_puts_model_in_navigating_state() {
+        let mut model = Model::new();
+        let operation = Operation::Move {
+            from: "from".to_string(),
+            to: "to".to_string(),
+        };
+        model.action_state = ActionState::Confirming(operation.clone());
+        let stage_operation_effect = Effect::StageOperation(operation.clone());
+
+        model.accept(stage_operation_effect);
+
+        assert_eq!(ActionState::Navigating, model.action_state);
     }
 
     #[test]
