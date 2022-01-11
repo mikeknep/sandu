@@ -81,6 +81,11 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
         model.navigation = nav;
         model.accept(effect);
     }
+
+    terminal.clear()?;
+    for operation in model.staged_operations {
+        println!("{}\r", operation);
+    }
     Ok(())
 }
 
