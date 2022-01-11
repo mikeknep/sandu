@@ -603,6 +603,8 @@ fn scroll_next(
         NavigationList::Types => {
             let nav = Navigation {
                 selected_type: cycle_next(plan.unique_types().len(), &navigation.selected_type),
+                selected_delete: None,
+                selected_create: None,
                 ..navigation.clone()
             };
             (nav, Effect::NoOp)
@@ -642,6 +644,8 @@ fn scroll_previous(
         NavigationList::Types => {
             let nav = Navigation {
                 selected_type: cycle_previous(plan.unique_types().len(), &navigation.selected_type),
+                selected_delete: None,
+                selected_create: None,
                 ..navigation.clone()
             };
             (nav, Effect::NoOp)
@@ -1523,6 +1527,29 @@ mod tests {
             },
             nav_reset
         );
+    }
+
+    #[test]
+    fn while_navigating_in_types_list_scrolling_deselects_resources() {
+        let plan = simple_plan(2);
+        let mut navigation = Navigation::default();
+        navigation.selected_type = Some(0);
+        navigation.selected_delete = Some(0);
+        navigation.selected_create = Some(0);
+        let mut model = Model::new();
+        model.navigation = navigation.clone();
+
+        let (nav_prev, _) = keypress(&plan, &model, Key::Up);
+        let (nav_next, _) = keypress(&plan, &model, Key::Down);
+
+        let expected_navigation = Navigation {
+            selected_type: Some(1),
+            selected_delete: None,
+            selected_create: None,
+            ..navigation.clone()
+        };
+        assert_eq!(expected_navigation, nav_prev);
+        assert_eq!(expected_navigation, nav_next);
     }
 
     #[test]
