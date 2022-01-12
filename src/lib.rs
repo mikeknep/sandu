@@ -918,18 +918,45 @@ fn keypress_while_confirming(
             address,
             identifier,
         } => keypress_while_confirming_import(plan, navigation, address, identifier, key),
-        _ => {
-            match key {
-                Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
-                Key::Char('\n') => {
-                    // TODO: if staged resources are removed from lists,
-                    // the navigation needs to update in case the list index is now out of bounds
-                    let nav = navigation.clone();
-                    (nav, Effect::StageOperation(operation.clone()))
-                }
-                _ => (navigation.clone(), Effect::NoOp),
-            }
+        Operation::Remove(_) => keypress_while_confirming_remove(navigation, operation, key),
+        Operation::Move { .. } => keypress_while_confirming_move(navigation, operation, key),
+    }
+}
+
+fn keypress_while_confirming_move(
+    navigation: &Navigation,
+    operation: &Operation,
+    key: Key,
+) -> (Navigation, Effect) {
+    match key {
+        Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
+        Key::Char('\n') => {
+            let nav = Navigation {
+                selected_create: None,
+                selected_delete: None,
+                ..navigation.clone()
+            };
+            (nav, Effect::StageOperation(operation.clone()))
         }
+        _ => (navigation.clone(), Effect::NoOp),
+    }
+}
+
+fn keypress_while_confirming_remove(
+    navigation: &Navigation,
+    operation: &Operation,
+    key: Key,
+) -> (Navigation, Effect) {
+    match key {
+        Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
+        Key::Char('\n') => {
+            let nav = Navigation {
+                selected_delete: None,
+                ..navigation.clone()
+            };
+            (nav, Effect::StageOperation(operation.clone()))
+        }
+        _ => (navigation.clone(), Effect::NoOp),
     }
 }
 
@@ -941,17 +968,16 @@ fn keypress_while_confirming_import(
     key: Key,
 ) -> (Navigation, Effect) {
     match key {
-        Key::Char('\n') => {
-            // TODO: if staged resources are removed from lists,
-            // the navigation needs to update in case the list index is now out of bounds
-            (
-                navigation.clone(),
-                Effect::StageOperation(Operation::Import {
-                    address: address.to_string(),
-                    identifier: identifier.to_string(),
-                }),
-            )
-        }
+        Key::Char('\n') => (
+            Navigation {
+                selected_create: None,
+                ..navigation.clone()
+            },
+            Effect::StageOperation(Operation::Import {
+                address: address.to_string(),
+                identifier: identifier.to_string(),
+            }),
+        ),
         Key::Backspace => match identifier.len() {
             0 => (navigation.clone(), Effect::CloseConfirmationModal),
             _ => {
@@ -1318,17 +1344,23 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_remove_pressing_return_stages_operation() {
+    fn while_confirming_remove_pressing_return_stages_operation_and_deselects_delete_resource() {
         let plan = simple_plan(1);
         let operation = Operation::Remove("address".to_string());
         let action_state = ActionState::Confirming(operation.clone());
-        let navigation = Navigation::default();
+        let mut navigation = Navigation::default();
+        navigation.selected_delete = Some(0);
         let mut model = Model::new();
         model.action_state = action_state;
+        model.navigation = navigation.clone();
 
         let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
-        assert_eq!(navigation, nav);
+        let expected_nav = Navigation {
+            selected_delete: None,
+            ..navigation
+        };
+        assert_eq!(expected_nav, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
     }
 
@@ -1364,20 +1396,28 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_move_pressing_return_stages_operation() {
+    fn while_confirming_move_pressing_return_stages_operation_and_deselects_resources() {
         let plan = simple_plan(1);
         let operation = Operation::Move {
             from: "from".to_string(),
             to: "to".to_string(),
         };
         let action_state = ActionState::Confirming(operation.clone());
-        let navigation = Navigation::default();
+        let mut navigation = Navigation::default();
+        navigation.selected_create = Some(0);
+        navigation.selected_delete = Some(0);
         let mut model = Model::new();
         model.action_state = action_state;
+        model.navigation = navigation.clone();
 
         let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
-        assert_eq!(navigation, nav);
+        let expected_nav = Navigation {
+            selected_create: None,
+            selected_delete: None,
+            ..navigation
+        };
+        assert_eq!(expected_nav, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
     }
 
@@ -1399,20 +1439,26 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_import_pressing_return_stages_operation() {
+    fn while_confirming_import_pressing_return_stages_operation_and_deselects_create_resource() {
         let plan = simple_plan(1);
         let operation = Operation::Import {
             address: "address".to_string(),
             identifier: "identifier".to_string(),
         };
         let action_state = ActionState::Confirming(operation.clone());
-        let navigation = Navigation::default();
+        let mut navigation = Navigation::default();
+        navigation.selected_create = Some(0);
         let mut model = Model::new();
         model.action_state = action_state;
+        model.navigation = navigation.clone();
 
         let (nav, effect) = keypress(&plan, &model, Key::Char('\n'));
 
-        assert_eq!(navigation, nav);
+        let expected_nav = Navigation {
+            selected_create: None,
+            ..navigation
+        };
+        assert_eq!(expected_nav, nav);
         assert_eq!(Effect::StageOperation(operation.clone()), effect);
     }
 
