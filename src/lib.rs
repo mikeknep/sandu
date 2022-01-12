@@ -96,7 +96,7 @@ where
 {
     terminal.draw(|f| {
         // Establish the basic visual layout of panes
-        let panes = Layout::default()
+        let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(
                 [
@@ -107,9 +107,9 @@ where
                 .as_ref(),
             )
             .split(f.size());
-        let left_pane = panes[0];
-        let deleting_pane = panes[1];
-        let creating_pane = panes[2];
+        let left_column = columns[0];
+        let deleting_column = columns[1];
+        let creating_column = columns[2];
 
         let left_panes = Layout::default()
             .direction(Direction::Vertical)
@@ -121,7 +121,7 @@ where
                 ]
                 .as_ref(),
             )
-            .split(left_pane);
+            .split(left_column);
         let types_list_pane = left_panes[0];
         let confirmation_pane = left_panes[1];
         let staged_operations_list_pane = left_panes[2];
@@ -129,14 +129,14 @@ where
         let deleting_panes = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(35), Constraint::Percentage(65)].as_ref())
-            .split(deleting_pane);
+            .split(deleting_column);
         let deleting_list_pane = deleting_panes[0];
         let deleting_preview_pane = deleting_panes[1];
 
         let creating_panes = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(35), Constraint::Percentage(65)].as_ref())
-            .split(creating_pane);
+            .split(creating_column);
         let creating_list_pane = creating_panes[0];
         let creating_preview_pane = creating_panes[1];
 
@@ -204,7 +204,7 @@ where
             f.render_stateful_widget(deleting_list, deleting_list_pane, &mut deleting_list_state);
             f.render_stateful_widget(creating_list, creating_list_pane, &mut creating_list_state);
 
-            // previews
+            // Resource previews
             if let Some(selected_delete_index) = model.navigation.selected_delete {
                 let delete_resource = &pending_deletion[selected_delete_index];
                 let delete_preview =
@@ -233,7 +233,7 @@ where
             }
         }
 
-        // Populate modal
+        // Populate confirmation pane while confirming an operation
         if let ActionState::Confirming(operation) = &model.action_state {
             let confirmation_text = get_confirmation_text(operation);
             let confirmation = Paragraph::new(confirmation_text)
