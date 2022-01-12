@@ -116,15 +116,15 @@ where
             .constraints(
                 [
                     Constraint::Percentage(40),
-                    Constraint::Percentage(40),
                     Constraint::Percentage(20),
+                    Constraint::Percentage(40),
                 ]
                 .as_ref(),
             )
             .split(left_pane);
         let types_list_pane = left_panes[0];
-        let staged_operations_list_pane = left_panes[1];
-        let help_pane = left_panes[2];
+        let confirmation_pane = left_panes[1];
+        let staged_operations_list_pane = left_panes[2];
 
         let deleting_panes = Layout::default()
             .direction(Direction::Vertical)
@@ -140,7 +140,7 @@ where
         let creating_list_pane = creating_panes[0];
         let creating_preview_pane = creating_panes[1];
 
-        let modal_pane = centered_rect(60, 20, f.size());
+        let modal_pane = centered_rect(60, 40, f.size());
 
         // Populate panes with content
 
@@ -172,16 +172,6 @@ where
             staged_operations_list,
             staged_operations_list_pane,
             &mut staged_operations_list_state,
-        );
-
-        let help_text = contextual_help_text(model);
-        f.render_widget(
-            Paragraph::new(help_text).block(
-                Block::default()
-                    .title("Help".to_string())
-                    .borders(Borders::ALL),
-            ),
-            help_pane,
         );
 
         if let Some(selected_type_index) = model.navigation.selected_type {
@@ -220,7 +210,11 @@ where
                 let delete_preview =
                     serde_json::to_string_pretty(&delete_resource.preview).unwrap();
                 f.render_widget(
-                    Paragraph::new(delete_preview).block(Block::default().borders(Borders::ALL)),
+                    Paragraph::new(delete_preview).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::Gray)),
+                    ),
                     deleting_preview_pane,
                 );
             }
@@ -229,7 +223,11 @@ where
                 let create_preview =
                     serde_json::to_string_pretty(&create_resource.preview).unwrap();
                 f.render_widget(
-                    Paragraph::new(create_preview).block(Block::default().borders(Borders::ALL)),
+                    Paragraph::new(create_preview).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::Gray)),
+                    ),
                     creating_preview_pane,
                 );
             }
@@ -240,8 +238,21 @@ where
             let confirmation_text = get_confirmation_text(operation);
             let confirmation = Paragraph::new(confirmation_text)
                 .block(Block::default().title("Confirm").borders(Borders::ALL));
+            f.render_widget(confirmation, confirmation_pane);
+        }
+
+        // Populate help modal when seeking help
+        if let ActionState::SeekingHelp(previous_action_state) = &model.action_state {
+            let help_text = contextual_help_text(*(previous_action_state.clone()));
             f.render_widget(Clear, modal_pane);
-            f.render_widget(confirmation, modal_pane);
+            f.render_widget(
+                Paragraph::new(help_text).block(
+                    Block::default()
+                        .title("Help".to_string())
+                        .borders(Borders::ALL),
+                ),
+                modal_pane,
+            );
         }
     })?;
     Ok(())
@@ -249,18 +260,26 @@ where
 
 fn get_confirmation_text(operation: &Operation) -> String {
     match operation {
-        Operation::Remove(address) => format!("
-Confirm you are removing this resource from Terraform state (i.e. \"forgetting\" it without destroying it) to stage the operation below.
+        Operation::Remove(address) => format!(
+            "
+Confirm REMOVE operation.
+(Causes Terraform to \"forget\" the resource without destroying it.)
+
 
 Address: {}
 
+
 terraform state rm {}
-        ", address, address),
+        ",
+            address, address
+        ),
         Operation::Import {
             address,
             identifier,
-        } => format!("
-Enter the resource identifier to stage the operation below to import the (existing) resource into Terraform and manage it going forward.
+        } => format!(
+            "
+Confirm IMPORT operation.
+(Pulls existing resource into Terraform management.)
 
 
 Address:    {}
@@ -269,9 +288,13 @@ Identifier: {}
 
 
 terraform import {} {}
-        ", address, identifier, address, identifier),
-        Operation::Move { from, to } => format!("
-Confirm resource address change to stage the operation below.
+        ",
+            address, identifier, address, identifier
+        ),
+        Operation::Move { from, to } => format!(
+            "
+Confirm MOVE operation.
+(Changes the Terraform address without altering the resource itself.)
 
 
 From: {}
@@ -280,24 +303,60 @@ To:   {}
 
 
 terraform state mv {} {}
-        ", from, to, from, to),
+        ",
+            from, to, from, to
+        ),
     }
 }
 
-fn contextual_help_text(model: &Model) -> String {
-    match &model.action_state {
-        ActionState::Navigating => "
+const NAVIGATION_HELP: &str = "
 Move to:                                Stage an operation:
 (t) Types list                          (i) Import
 (s) Staged operations list              (m) Move
 (d) Deleting resources list             (r) Remove
 (c) Creating resources list
 
-Scroll with j/k, up/down arrows, or ctrl-n/p
+Scroll with up/down arrows, j/k (vim-style), or ctrl-n/p
 
-Exit with q or Esc"
-            .to_string(),
-        _ => "Help text not yet available for this state".to_string(),
+Exit program with 'q' or Esc
+
+Close this help menu via 'h' or '?'
+";
+
+const CONFIRMING_REMOVE_HELP: &str = "
+Stage the operation: Enter/Return
+Abort and go back:   Backspace
+
+Close this help menu via 'h' or '?'
+";
+const CONFIRMING_MOVE_HELP: &str = "
+Stage the operation: Enter/Return
+Abort and go back:   Backspace
+
+Close this help menu via 'h' or '?'
+";
+const CONFIRMING_IMPORT_HELP: &str = "
+Type in the resource identifier.
+
+Stage the operation: Enter/Return
+Abort and go back:   Backspace (when identifier is empty)
+
+Close this help menu via 'h' or '?'
+";
+
+fn contextual_help_text(action_state: ActionState) -> String {
+    match action_state {
+        ActionState::Navigating => NAVIGATION_HELP.to_string(),
+        ActionState::Confirming(operation) => help_text_for_operation(operation),
+        _ => unreachable!(),
+    }
+}
+
+fn help_text_for_operation(operation: Operation) -> String {
+    match operation {
+        Operation::Remove(_) => CONFIRMING_REMOVE_HELP.to_string(),
+        Operation::Move { .. } => CONFIRMING_MOVE_HELP.to_string(),
+        Operation::Import { .. } => CONFIRMING_IMPORT_HELP.to_string(),
     }
 }
 
@@ -470,6 +529,7 @@ pub trait Filesystem {
 enum ActionState {
     Navigating,
     Confirming(Operation),
+    SeekingHelp(Box<ActionState>),
     Exiting,
 }
 
@@ -553,6 +613,11 @@ impl Model {
             Effect::UnstageOperation(index) => {
                 self.staged_operations.remove(index);
             }
+            Effect::OpenHelpModal => {
+                let previous_action_state = self.action_state.clone();
+                self.action_state = ActionState::SeekingHelp(Box::new(previous_action_state));
+            }
+            Effect::CloseHelpModal(action_state) => self.action_state = action_state,
             Effect::Exit => self.action_state = ActionState::Exiting,
             Effect::NoOp => {}
         }
@@ -565,6 +630,8 @@ enum Effect {
     CloseConfirmationModal,
     StageOperation(Operation),
     UnstageOperation(usize),
+    OpenHelpModal,
+    CloseHelpModal(ActionState),
     Exit,
     NoOp,
 }
@@ -579,6 +646,9 @@ fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effec
     if let Key::Esc | Key::Char('q') = key {
         return (model.navigation.clone(), Effect::Exit);
     }
+    if let Key::Char('h') | Key::Char('?') = key {
+        return toggle_help(model);
+    }
     match &model.action_state {
         ActionState::Navigating => {
             keypress_while_navigating(plan, &model.navigation, &model.staged_operations, key)
@@ -586,7 +656,18 @@ fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effec
         ActionState::Confirming(operation) => {
             keypress_while_confirming(plan, &model.navigation, operation, key)
         }
+        ActionState::SeekingHelp(_) => (model.navigation.clone(), Effect::NoOp),
         ActionState::Exiting => unreachable!(),
+    }
+}
+
+fn toggle_help(model: &Model) -> (Navigation, Effect) {
+    match &model.action_state {
+        ActionState::SeekingHelp(prev) => (
+            model.navigation.clone(),
+            Effect::CloseHelpModal(*(prev.clone())),
+        ),
+        _ => (model.navigation.clone(), Effect::OpenHelpModal),
     }
 }
 
@@ -1087,6 +1168,39 @@ mod tests {
         let mut model = Model::new();
         model.accept(Effect::Exit);
         assert_eq!(ActionState::Exiting, model.action_state);
+    }
+
+    #[test]
+    fn open_help_modal_effect_puts_model_in_seeking_help_state() {
+        let mut model = Model::new();
+        model.accept(Effect::OpenHelpModal);
+        assert_eq!(
+            ActionState::SeekingHelp(Box::new(ActionState::Navigating)),
+            model.action_state
+        );
+    }
+
+    #[test]
+    fn close_help_modal_effect_restores_model_to_previous_state() {
+        let mut model = Model::new();
+        model.action_state = ActionState::SeekingHelp(Box::new(ActionState::Navigating));
+
+        model.accept(Effect::CloseHelpModal(ActionState::Navigating));
+
+        assert_eq!(ActionState::Navigating, model.action_state);
+
+        let operation = Operation::Remove("address".to_string());
+        model.action_state =
+            ActionState::SeekingHelp(Box::new(ActionState::Confirming(operation.clone())));
+
+        model.accept(Effect::CloseHelpModal(ActionState::Confirming(
+            operation.clone(),
+        )));
+
+        assert_eq!(
+            ActionState::Confirming(operation.clone()),
+            model.action_state
+        );
     }
 
     #[test]
@@ -2262,5 +2376,57 @@ mod tests {
 
         assert_eq!(selection_but_incorrect_list_nav, nav);
         assert_eq!(Effect::NoOp, effect);
+    }
+
+    #[test]
+    fn while_navigating_pressing_h_or_questionmark_toggles_help_modal() {
+        let plan = simple_plan(1);
+        let mut model = Model::new();
+
+        let (_, effect_h) = keypress(&plan, &model, Key::Char('h'));
+        let (_, effect_question) = keypress(&plan, &model, Key::Char('?'));
+
+        assert_eq!(Effect::OpenHelpModal, effect_h);
+        assert_eq!(Effect::OpenHelpModal, effect_question);
+
+        model.action_state = ActionState::SeekingHelp(Box::new(ActionState::Navigating));
+
+        let (_, effect_h) = keypress(&plan, &model, Key::Char('h'));
+        let (_, effect_question) = keypress(&plan, &model, Key::Char('?'));
+
+        assert_eq!(Effect::CloseHelpModal(ActionState::Navigating), effect_h);
+        assert_eq!(
+            Effect::CloseHelpModal(ActionState::Navigating),
+            effect_question
+        );
+    }
+
+    #[test]
+    fn while_confirming_operation_pressing_h_or_questionmark_toggles_help_modal() {
+        let plan = simple_plan(1);
+        let operation = Operation::Remove("address".to_string());
+        let mut model = Model::new();
+        model.action_state = ActionState::Confirming(operation.clone());
+
+        let (_, effect_h) = keypress(&plan, &model, Key::Char('h'));
+        let (_, effect_question) = keypress(&plan, &model, Key::Char('?'));
+
+        assert_eq!(Effect::OpenHelpModal, effect_h);
+        assert_eq!(Effect::OpenHelpModal, effect_question);
+
+        model.action_state =
+            ActionState::SeekingHelp(Box::new(ActionState::Confirming(operation.clone())));
+
+        let (_, effect_h) = keypress(&plan, &model, Key::Char('h'));
+        let (_, effect_question) = keypress(&plan, &model, Key::Char('?'));
+
+        assert_eq!(
+            Effect::CloseHelpModal(ActionState::Confirming(operation.clone())),
+            effect_h
+        );
+        assert_eq!(
+            Effect::CloseHelpModal(ActionState::Confirming(operation.clone())),
+            effect_question
+        );
     }
 }
