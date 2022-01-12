@@ -333,13 +333,13 @@ Close this help menu via 'h' or '?'
 
 const CONFIRMING_REMOVE_HELP: &str = "
 Stage the operation: Enter/Return
-Abort and go back:   Backspace
+Abort and go back:   Delete
 
 Close this help menu via 'h' or '?'
 ";
 const CONFIRMING_MOVE_HELP: &str = "
 Stage the operation: Enter/Return
-Abort and go back:   Backspace
+Abort and go back:   Delete
 
 Close this help menu via 'h' or '?'
 ";
@@ -347,7 +347,7 @@ const CONFIRMING_IMPORT_HELP: &str = "
 Type in the resource identifier.
 
 Stage the operation: Enter/Return
-Abort and go back:   Backspace (when identifier is empty)
+Abort and go back:   Delete
 
 Close this help menu via 'h' or '?'
 ";
@@ -941,6 +941,9 @@ fn keypress_while_confirming(
     operation: &Operation,
     key: Key,
 ) -> (Navigation, Effect) {
+    if let Key::Delete = key {
+        return (navigation.clone(), Effect::CloseConfirmationModal);
+    }
     match operation {
         Operation::Import {
             address,
@@ -957,7 +960,6 @@ fn keypress_while_confirming_move(
     key: Key,
 ) -> (Navigation, Effect) {
     match key {
-        Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
         Key::Char('\n') => {
             let nav = Navigation {
                 selected_create: None,
@@ -976,7 +978,6 @@ fn keypress_while_confirming_remove(
     key: Key,
 ) -> (Navigation, Effect) {
     match key {
-        Key::Backspace => (navigation.clone(), Effect::CloseConfirmationModal),
         Key::Char('\n') => {
             let nav = Navigation {
                 selected_delete: None,
@@ -1006,7 +1007,7 @@ fn keypress_while_confirming_import(
             }),
         ),
         Key::Backspace => match identifier.len() {
-            0 => (navigation.clone(), Effect::CloseConfirmationModal),
+            0 => (navigation.clone(), Effect::NoOp),
             _ => {
                 let mut updated_identifier = identifier.to_string();
                 updated_identifier.pop();
@@ -1367,14 +1368,14 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_remove_pressing_backspace_closes_modal() {
+    fn while_confirming_remove_pressing_delete_closes_modal() {
         let plan = simple_plan(1);
         let action_state = ActionState::Confirming(Operation::Remove("address".to_string()));
         let navigation = Navigation::default();
         let mut model = Model::new();
         model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
@@ -1416,7 +1417,7 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_move_pressing_backspace_closes_modal() {
+    fn while_confirming_move_pressing_delete_closes_modal() {
         let plan = simple_plan(1);
         let action_state = ActionState::Confirming(Operation::Move {
             from: "from".to_string(),
@@ -1426,7 +1427,7 @@ mod tests {
         let mut model = Model::new();
         model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
@@ -1500,7 +1501,7 @@ mod tests {
     }
 
     #[test]
-    fn while_confirming_import_pressing_backspace_deletes_from_identifier_if_present() {
+    fn while_confirming_import_pressing_backspace_deletes_from_identifier_safely() {
         let plan = simple_plan(1);
         let operation = Operation::Import {
             address: "address".to_string(),
@@ -1513,7 +1514,7 @@ mod tests {
 
         let (nav, effect) = keypress(&plan, &model, Key::Backspace);
 
-        assert_eq!(navigation, nav);
+        assert_eq!(navigation.clone(), nav);
         assert_eq!(
             Effect::SeekConfirmation(Operation::Import {
                 address: "address".to_string(),
@@ -1521,10 +1522,17 @@ mod tests {
             }),
             effect
         );
+
+        model.accept(effect);
+
+        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
+
+        assert_eq!(navigation, nav);
+        assert_eq!(Effect::NoOp, effect);
     }
 
     #[test]
-    fn while_confirming_import_pressing_backspace_closes_modal_if_identifier_is_empty() {
+    fn while_confirming_import_pressing_delete_closes_modal() {
         let plan = simple_plan(1);
         let operation = Operation::Import {
             address: "address".to_string(),
@@ -1535,7 +1543,7 @@ mod tests {
         let mut model = Model::new();
         model.action_state = action_state;
 
-        let (nav, effect) = keypress(&plan, &model, Key::Backspace);
+        let (nav, effect) = keypress(&plan, &model, Key::Delete);
 
         assert_eq!(navigation, nav);
         assert_eq!(Effect::CloseConfirmationModal, effect);
