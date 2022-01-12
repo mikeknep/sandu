@@ -176,8 +176,16 @@ where
 
         if let Some(selected_type_index) = model.navigation.selected_type {
             let active_type = plan.unique_types()[selected_type_index].clone();
-            let pending_deletion = resources_of_type(&active_type, &plan.pending_deletion);
-            let pending_creation = resources_of_type(&active_type, &plan.pending_creation);
+            let pending_deletion = unstaged_resources_of_type(
+                &active_type,
+                &plan.pending_deletion,
+                &model.staged_operations,
+            );
+            let pending_creation = unstaged_resources_of_type(
+                &active_type,
+                &plan.pending_creation,
+                &model.staged_operations,
+            );
 
             let deleting_list_items: Vec<ListItem> = pending_deletion
                 .iter()
@@ -491,10 +499,21 @@ impl From<TfPlan> for TerraformPlan {
     }
 }
 
-fn resources_of_type(t: &str, resources: &[TerraformResource]) -> Vec<TerraformResource> {
+fn unstaged_resources_of_type(
+    t: &str,
+    resources: &[TerraformResource],
+    staged_operations: &[Operation],
+) -> Vec<TerraformResource> {
+    let staged_resource_addresses: Vec<String> = staged_operations
+        .iter()
+        .flat_map(|operation| operation.addresses())
+        .collect();
+
     resources
         .iter()
-        .filter(|resource| resource.r#type == t)
+        .filter(|resource| {
+            resource.r#type == t && !staged_resource_addresses.contains(&resource.address)
+        })
         .cloned()
         .collect()
 }
@@ -504,6 +523,7 @@ fn selected_resource(
     action: TerraformAction,
     selected_type_index: Option<usize>,
     selected_resource_index: Option<usize>,
+    operations: &[Operation],
 ) -> Option<TerraformResource> {
     if let Some(i) = selected_type_index {
         let resource_type = &plan.unique_types()[i];
@@ -511,7 +531,8 @@ fn selected_resource(
             TerraformAction::Create => &plan.pending_creation,
             TerraformAction::Delete => &plan.pending_deletion,
         };
-        selected_resource_index.map(|i| resources_of_type(resource_type, resources)[i].clone())
+        selected_resource_index
+            .map(|i| unstaged_resources_of_type(resource_type, resources, operations)[i].clone())
     } else {
         None
     }
@@ -713,12 +734,14 @@ fn keypress_while_navigating(
                     TerraformAction::Delete,
                     navigation.selected_type,
                     navigation.selected_delete,
+                    operations,
                 ),
                 selected_resource(
                     plan,
                     TerraformAction::Create,
                     navigation.selected_type,
                     navigation.selected_create,
+                    operations,
                 ),
             ) {
                 let operation = Operation::Move {
@@ -736,6 +759,7 @@ fn keypress_while_navigating(
                 TerraformAction::Delete,
                 navigation.selected_type,
                 navigation.selected_delete,
+                operations,
             ) {
                 let operation = Operation::Remove(resource.address);
                 (navigation.clone(), Effect::SeekConfirmation(operation))
@@ -749,6 +773,7 @@ fn keypress_while_navigating(
                 TerraformAction::Create,
                 navigation.selected_type,
                 navigation.selected_create,
+                operations,
             ) {
                 let operation = Operation::Import {
                     address: resource.address,
@@ -795,7 +820,8 @@ fn scroll_next(
             (nav, Effect::NoOp)
         }
         NavigationList::Create(r#type) => {
-            let list_length = resources_of_type(r#type, &plan.pending_creation).len();
+            let list_length =
+                unstaged_resources_of_type(r#type, &plan.pending_creation, operations).len();
             let nav = Navigation {
                 selected_create: cycle_next(list_length, &navigation.selected_create),
                 ..navigation.clone()
@@ -803,7 +829,8 @@ fn scroll_next(
             (nav, Effect::NoOp)
         }
         NavigationList::Delete(r#type) => {
-            let list_length = resources_of_type(r#type, &plan.pending_deletion).len();
+            let list_length =
+                unstaged_resources_of_type(r#type, &plan.pending_deletion, operations).len();
             let nav = Navigation {
                 selected_delete: cycle_next(list_length, &navigation.selected_delete),
                 ..navigation.clone()
@@ -836,7 +863,8 @@ fn scroll_previous(
             (nav, Effect::NoOp)
         }
         NavigationList::Create(r#type) => {
-            let list_length = resources_of_type(r#type, &plan.pending_creation).len();
+            let list_length =
+                unstaged_resources_of_type(r#type, &plan.pending_creation, operations).len();
             let nav = Navigation {
                 selected_create: cycle_previous(list_length, &navigation.selected_create),
                 ..navigation.clone()
@@ -844,7 +872,8 @@ fn scroll_previous(
             (nav, Effect::NoOp)
         }
         NavigationList::Delete(r#type) => {
-            let list_length = resources_of_type(r#type, &plan.pending_deletion).len();
+            let list_length =
+                unstaged_resources_of_type(r#type, &plan.pending_deletion, operations).len();
             let nav = Navigation {
                 selected_delete: cycle_previous(list_length, &navigation.selected_delete),
                 ..navigation.clone()
@@ -1057,6 +1086,16 @@ impl fmt::Display for Operation {
                 write!(f, "terraform import {} {}", address, identifier)
             }
             Operation::Remove(address) => write!(f, "terraform state rm {}", address),
+        }
+    }
+}
+
+impl Operation {
+    fn addresses(&self) -> Vec<String> {
+        match self {
+            Operation::Remove(address) => vec![address.clone()],
+            Operation::Move { from, to } => vec![from.clone(), to.clone()],
+            Operation::Import { address, .. } => vec![address.clone()],
         }
     }
 }
