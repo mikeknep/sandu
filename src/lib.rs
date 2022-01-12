@@ -654,7 +654,7 @@ fn keypress(plan: &TerraformPlan, model: &Model, key: Key) -> (Navigation, Effec
             keypress_while_navigating(plan, &model.navigation, &model.staged_operations, key)
         }
         ActionState::Confirming(operation) => {
-            keypress_while_confirming(plan, &model.navigation, operation, key)
+            keypress_while_confirming(&model.navigation, operation, key)
         }
         ActionState::SeekingHelp(_) => (model.navigation.clone(), Effect::NoOp),
         ActionState::Exiting => unreachable!(),
@@ -908,7 +908,6 @@ fn move_to(navigation: &Navigation, list: NavigationList) -> (Navigation, Effect
 }
 
 fn keypress_while_confirming(
-    plan: &TerraformPlan,
     navigation: &Navigation,
     operation: &Operation,
     key: Key,
@@ -917,7 +916,7 @@ fn keypress_while_confirming(
         Operation::Import {
             address,
             identifier,
-        } => keypress_while_confirming_import(plan, navigation, address, identifier, key),
+        } => keypress_while_confirming_import(navigation, address, identifier, key),
         Operation::Remove(_) => keypress_while_confirming_remove(navigation, operation, key),
         Operation::Move { .. } => keypress_while_confirming_move(navigation, operation, key),
     }
@@ -961,7 +960,6 @@ fn keypress_while_confirming_remove(
 }
 
 fn keypress_while_confirming_import(
-    plan: &TerraformPlan,
     navigation: &Navigation,
     address: &str,
     identifier: &str,
