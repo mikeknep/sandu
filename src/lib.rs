@@ -274,12 +274,11 @@ Confirm REMOVE operation.
 (Causes Terraform to \"forget\" the resource without destroying it.)
 
 
-Address: {}
+Address: {address}
 
 
-terraform state rm {}
-        ",
-            address, address
+terraform state rm {address}
+        "
         ),
         Operation::Import {
             address,
@@ -290,14 +289,13 @@ Confirm IMPORT operation.
 (Pulls existing resource into Terraform management.)
 
 
-Address:    {}
+Address:    {address}
 
-Identifier: {}
+Identifier: {identifier}
 
 
-terraform import {} {}
-        ",
-            address, identifier, address, identifier
+terraform import {address} {identifier}
+        "
         ),
         Operation::Move { from, to } => format!(
             "
@@ -305,14 +303,13 @@ Confirm MOVE operation.
 (Changes the Terraform address without altering the resource itself.)
 
 
-From: {}
+From: {from}
 
-To:   {}
+To:   {to}
 
 
-terraform state mv {} {}
-        ",
-            from, to, from, to
+terraform state mv {from} {to}
+        "
         ),
     }
 }
@@ -1049,12 +1046,12 @@ mod tests {
         let mut pending_deletion = vec![];
         for i in 0..number_of_types {
             pending_creation.push(TerraformResource {
-                address: format!("{}.{}", i.to_string(), i.to_string()),
+                address: format!("{i}.{i}"),
                 r#type: i.to_string(),
                 preview: json!({}),
             });
             pending_deletion.push(TerraformResource {
-                address: format!("{}.{}", i.to_string(), i.to_string()),
+                address: format!("{i}.{i}"),
                 r#type: i.to_string(),
                 preview: json!({}),
             });
