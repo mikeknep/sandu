@@ -1,4 +1,4 @@
-use crate::terraform::{TerraformAction, TerraformPlan, TerraformResource};
+use crate::terraform::{Terraform, TerraformAction, TerraformPlan, TerraformResource};
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -17,7 +17,7 @@ use tui::{
     Terminal,
 };
 
-mod terraform;
+pub mod terraform;
 
 #[derive(StructOpt)]
 #[structopt(name = "sandu", about = "Interactive Terraform state surgery")]
@@ -59,8 +59,7 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
     if !clients.filesystem.file_exists(&sandu.planfile) {
         return Err(SanduError::new("Provided file does not exist"));
     }
-    let json_bytes = clients.terraform.show_plan(&sandu.planfile)?;
-    let plan = terraform::parse(&json_bytes)?;
+    let plan = clients.terraform.show_plan(&sandu.planfile)?;
 
     let mut model = Model::new();
 
@@ -456,10 +455,6 @@ fn selected_resource(
     } else {
         None
     }
-}
-
-pub trait Terraform {
-    fn show_plan(&self, planfile: &str) -> Result<Vec<u8>, Box<dyn Error>>;
 }
 
 pub trait Filesystem {
@@ -1024,7 +1019,7 @@ mod tests {
     struct FailClient {}
 
     impl Terraform for FailClient {
-        fn show_plan(&self, _: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        fn show_plan(&self, _: &str) -> Result<TerraformPlan, Box<dyn Error>> {
             Err(SanduError::new("Terraform failed!"))
         }
     }

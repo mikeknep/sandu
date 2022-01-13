@@ -2,6 +2,10 @@ use itertools::Itertools;
 use serde::Deserialize;
 use std::error::Error;
 
+pub trait Terraform {
+    fn show_plan(&self, planfile: &str) -> Result<TerraformPlan, Box<dyn Error>>;
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TerraformAction {
     Create,
