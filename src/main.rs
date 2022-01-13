@@ -1,9 +1,8 @@
 use std::error::Error;
-use std::path::Path;
 use structopt::StructOpt;
 
-use crate::real::TerraformCli;
-use sandu::{Clients, Filesystem, Sandu};
+use crate::real::{LocalFilesystem, TerraformCli};
+use sandu::{Clients, Sandu};
 
 mod real;
 
@@ -15,11 +14,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     sandu::run(sandu, clients)
-}
-
-struct LocalFilesystem {}
-impl Filesystem for LocalFilesystem {
-    fn file_exists(&self, path: &str) -> bool {
-        Path::new(&path).is_file()
-    }
 }

@@ -1,9 +1,10 @@
 use std::error::Error;
+use std::path::Path;
 use std::process::Command;
 
 use sandu::terraform;
 use sandu::terraform::{Terraform, TerraformPlan};
-use sandu::SanduError;
+use sandu::{Filesystem, SanduError};
 
 pub struct TerraformCli {}
 impl Terraform for TerraformCli {
@@ -18,5 +19,12 @@ impl Terraform for TerraformCli {
                 "Could not run `terraform show -json` on provided file",
             ))
         }
+    }
+}
+
+pub struct LocalFilesystem {}
+impl Filesystem for LocalFilesystem {
+    fn file_exists(&self, path: &str) -> bool {
+        Path::new(&path).is_file()
     }
 }
