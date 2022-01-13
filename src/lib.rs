@@ -60,6 +60,12 @@ pub fn run(sandu: Sandu, clients: Clients) -> Result<(), Box<dyn Error>> {
         return Err(SanduError::new("Provided file does not exist"));
     }
     let plan = clients.terraform.show_plan(&sandu.planfile)?;
+    if plan.is_empty() {
+        println!(
+            "The provided plan does not include any changes that can be refactored using Sandu."
+        );
+        return Ok(());
+    }
 
     let mut model = Model::new();
 
