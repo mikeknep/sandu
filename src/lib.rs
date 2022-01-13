@@ -1,8 +1,9 @@
 use crate::terraform::{Terraform, TerraformAction, TerraformPlan, TerraformResource};
+
+use clap::Parser;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use structopt::StructOpt;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -19,8 +20,8 @@ use tui::{
 
 pub mod terraform;
 
-#[derive(StructOpt)]
-#[structopt(name = "sandu", about = "Interactive Terraform state surgery")]
+#[derive(Parser)]
+#[clap(about = "Interactive Terraform state surgery")]
 pub struct Sandu {
     planfile: String,
 }
