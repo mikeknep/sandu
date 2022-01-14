@@ -58,6 +58,13 @@ The checked-in `tfplan` file is the result of running `terraform plan -out tfpla
 
 This is a perfect situation in which to use Sandu!
 
+If you want to try out Sandu without installing both Rust and Terraform, you can run the example in a Docker container.
+From the root of this repository, run:
+```
+docker build -t sandu-example -f example/Dockerfile .
+docker run --rm -it sandu-example
+```
+
 ## Developing Sandu
 
 ```
