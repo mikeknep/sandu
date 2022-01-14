@@ -5,7 +5,7 @@ terraform {
       version = "~> 3.1"
     }
   }
-  required_version = "~> 1.0"
+  required_version = "1.0.9"
 }
 
 module "renamed" {
